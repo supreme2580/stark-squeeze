@@ -7,13 +7,10 @@ export async function imageToBase64(imagePath: string): Promise<string> {
     
     // Process the image with Sharp
     const processedImageBuffer = await sharp(absolutePath)
-      .resize(300, 300, { // Adjust dimensions as needed
-        fit: 'inside',
-        withoutEnlargement: true
-      })
-      .jpeg({ // Convert to JPEG with compression
-        quality: 80, // Adjust quality (0-100)
-        progressive: true
+      .jpeg({ 
+        quality: 100, // Slightly higher quality
+        progressive: true,
+        mozjpeg: true // Use mozjpeg optimization for better compression
       })
       .toBuffer();
     
