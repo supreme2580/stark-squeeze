@@ -11,10 +11,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "fs": "^0.0.1-security"
+    "fs": "^0.0.1-security",
+    "sharp": "^0.33.5"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
+    "@types/sharp": "^0.32.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   }

@@ -1,15 +1,24 @@
-import { readFileSync } from 'fs';
 import { join } from 'path';
+import sharp from 'sharp';
 
-export function imageToBase64(imagePath: string): string {
+export async function imageToBase64(imagePath: string): Promise<string> {
   try {
-    // Read the image file
     const absolutePath = join(__dirname, imagePath);
-    const image = readFileSync(absolutePath);
+    
+    // Process the image with Sharp
+    const processedImageBuffer = await sharp(absolutePath)
+      .resize(300, 300, { // Adjust dimensions as needed
+        fit: 'inside',
+        withoutEnlargement: true
+      })
+      .jpeg({ // Convert to JPEG with compression
+        quality: 80, // Adjust quality (0-100)
+        progressive: true
+      })
+      .toBuffer();
     
     // Convert to base64
-    const base64String = image.toString('base64');
-    console.log(base64String);
+    const base64String = processedImageBuffer.toString('base64');
     return base64String;
   } catch (error) {
     throw new Error(`Error converting image to base64: ${error}`);
@@ -17,9 +26,13 @@ export function imageToBase64(imagePath: string): string {
 }
 
 // Example usage
-try {
-  const base64Image = imageToBase64('../assets/logo.png');
-  console.log('Base64 string:', base64Image);
-} catch (error) {
-  console.error(error);
-} 
+async function main() {
+  try {
+    const base64Image = await imageToBase64('../assets/logo.png');
+    console.log('Base64 string:', base64Image);
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+main(); 
