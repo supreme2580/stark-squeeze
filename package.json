@@ -1,23 +1,25 @@
 {
   "name": "stark-squeeze",
   "version": "1.0.0",
-  "main": "index.js",
+  "description": "Compress images and upload to the starknet blockchain to Stark Squeeze",
+  "main": "dist/imageToBase64.js",
+  "types": "dist/imageToBase64.d.ts",
   "scripts": {
-    "start": "ts-node src/index.ts",
     "build": "tsc",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "prepare": "npm run build"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "starknet",
+    "stark-squeeze",
+    "typescript"
+  ],
+  "author": "Supreme",
+  "license": "MIT",
   "dependencies": {
-    "fs": "^0.0.1-security",
-    "sharp": "^0.33.5"
+    "sharp": "^0.33.2"
   },
   "devDependencies": {
-    "@types/node": "^20.11.24",
-    "@types/sharp": "^0.32.0",
-    "ts-node": "^10.9.2",
+    "@types/node": "^20.11.0",
     "typescript": "^5.3.3"
   }
 }
