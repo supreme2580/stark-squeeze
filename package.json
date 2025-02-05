@@ -1,6 +1,6 @@
 {
   "name": "stark-squeeze",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
