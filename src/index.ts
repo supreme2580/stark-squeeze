@@ -1,4 +1,4 @@
-import { PinataSDK } from "pinata-web3";
+import { GetCIDResponse, PinataSDK } from "pinata-web3";
 
 interface UploadOptions {
   file: File | Blob;
@@ -58,4 +58,40 @@ export async function upload(
     console.error(error);
     throw error;
   }
+}
+
+/**
+ * Retrieves a file from IPFS using Pinata gateway
+ * 
+ * @param jwt - Pinata JWT authentication token
+ * @param gateway - IPFS gateway domain (e.g., "gateway.pinata.cloud")
+ * @param hash - IPFS hash (CID) of the file to retrieve
+ * 
+ * @returns Promise that resolves to the GetCIDResponse object containing file details
+ * 
+ * @example
+ * ```typescript
+ * // Retrieve a file using its IPFS hash
+ * const fileDetails = await getFile(
+ *   "your-pinata-jwt",
+ *   "gateway.pinata.cloud",
+ *   "QmHash..."
+ * );
+ * ```
+ * 
+ * @throws Will throw an error if the file retrieval fails
+ */
+export async function getFile(jwt: string, gateway: string, hash: string): Promise<GetCIDResponse> {
+    try {
+        const pinata = new PinataSDK({
+            pinataJwt: jwt,
+            pinataGateway: gateway,
+        });
+        const file = await pinata.gateways.get(hash);
+        console.log(file);
+        return file;
+    } catch (error) {
+        console.error(error);
+        throw error;
+    }
 }
