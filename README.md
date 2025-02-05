@@ -20,6 +20,7 @@ To use StarkSqueeze in your project, follow these steps:
 
 - Full integration with Pinata for IPFS storage
 - Upload CIDs to Starknet
+- Write content directory manager contract
 - Index data via Apibara
 - Implement data retrieval from Pinata
 
