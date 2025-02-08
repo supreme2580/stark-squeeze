@@ -1,25 +1,21 @@
-fn main() -> u32 {
-    fib(16)
+#[starknet::interface]
+trait IDataStorage<TContractState> {
+    fn add_data(ref self: TContractState, cid: felt252);
 }
 
-fn fib(mut n: u32) -> u32 {
-    let mut a: u32 = 0;
-    let mut b: u32 = 1;
-    while n != 0 {
-        n = n - 1;
-        let temp = b;
-        b = a + b;
-        a = temp;
-    };
-    a
-}
+#[starknet::contract]
+mod DataStorage {
+    use core::starknet::storage::{StoragePointerWriteAccess};
 
-#[cfg(test)]
-mod tests {
-    use super::fib;
+    #[storage]
+    struct Storage {
+        cid: felt252,
+    }
 
-    #[test]
-    fn it_works() {
-        assert(fib(16) == 987, 'it works!');
+    #[abi(embed_v0)]
+    impl DataStorage of super::IDataStorage<ContractState> {
+        fn add_data(ref self: ContractState, cid: felt252) {
+            self.cid.write(cid);
+        }
     }
 }
