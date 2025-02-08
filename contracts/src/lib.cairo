@@ -1,11 +1,15 @@
+use starknet::ContractAddress;
+
 #[starknet::interface]
 trait IDataStorage<TContractState> {
     fn add_data(ref self: TContractState, cid: felt252);
+    fn get_data(self: @TContractState, address: ContractAddress) -> (felt252, ContractAddress, u64);
 }
 
 #[starknet::contract]
 mod DataStorage {
-    use core::starknet::storage::{StoragePointerWriteAccess};
+    use super::ContractAddress;
+    use core::starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::get_caller_address;
     use starknet::get_block_timestamp;
 
@@ -18,14 +22,14 @@ mod DataStorage {
     #[derive(Drop, starknet::Event)]
     struct DataAdded {
         cid: felt252,
-        address: starknet::ContractAddress,
+        address: ContractAddress,
         timestamp: u64,
     }
 
     #[storage]
     struct Storage {
         cid: felt252,
-        address: starknet::ContractAddress,
+        address: ContractAddress,
         timestamp: u64,
     }
 
@@ -40,6 +44,11 @@ mod DataStorage {
             self.timestamp.write(timestamp);
 
             self.emit(DataAdded { cid, address: caller, timestamp });
+        }
+
+        fn get_data(self: @ContractState, address: ContractAddress) -> (felt252, ContractAddress, u64) {
+            assert(self.address.read() == address, 'Address not found');
+            (self.cid.read(), self.address.read(), self.timestamp.read())
         }
     }
 }
