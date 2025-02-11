@@ -95,3 +95,57 @@ export async function getFile(jwt: string, gateway: string, hash: string): Promi
         throw error;
     }
 }
+
+/**
+ * Uploads multiple files to IPFS using Pinata and returns their CIDs
+ * 
+ * @param jwt - Pinata JWT authentication token
+ * @param gateway - IPFS gateway domain (e.g., "gateway.pinata.cloud")
+ * @param files - Array of objects containing file, fileName, and fileType
+ * 
+ * @returns Promise that resolves to an array of CIDs of the uploaded files
+ * 
+ * @example
+ * ```typescript
+ * // Upload multiple image files
+ * const files = [
+ *   { file: new File([blob1], "image1.jpg", { type: "image/jpeg" }), fileName: "image1.jpg", fileType: "image/jpeg" },
+ *   { file: new File([blob2], "image2.png", { type: "image/png" }), fileName: "image2.png", fileType: "image/png" }
+ * ];
+ * const cids = await uploadFiles(
+ *   "your-pinata-jwt",
+ *   "gateway.pinata.cloud",
+ *   files
+ * );
+ * // Returns: ["QmHash1...", "QmHash2..."]
+ * ```
+ * 
+ * @throws Will throw an error if any of the uploads fail
+ */
+export async function uploadFiles(
+  jwt: string,
+  gateway: string,
+  files: UploadOptions[]
+): Promise<string[]> {
+  try {
+    const pinata = new PinataSDK({
+      pinataJwt: jwt,
+      pinataGateway: gateway,
+    });
+
+    const uploadPromises = files.map(async (fileOptions) => {
+      const file = fileOptions.file instanceof File 
+        ? fileOptions.file 
+        : new File([fileOptions.file], fileOptions.fileName, { type: fileOptions.fileType });
+
+      const upload = await pinata.upload.file(file);
+      return upload.IpfsHash;
+    });
+
+    const cids = await Promise.all(uploadPromises);
+    return cids;
+  } catch (error) {
+    console.error(error);
+    throw error;
+  }
+}
