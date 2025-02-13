@@ -133,16 +133,16 @@ export async function uploadFiles(
       pinataGateway: gateway,
     });
 
-    const uploadPromises = files.map(async (fileOptions) => {
+    const cids: string[] = [];
+
+    for (const fileOptions of files) {
       const file = fileOptions.file instanceof File 
         ? fileOptions.file 
         : new File([fileOptions.file], fileOptions.fileName, { type: fileOptions.fileType });
 
       const upload = await pinata.upload.file(file);
-      return upload.IpfsHash;
-    });
-
-    const cids = await Promise.all(uploadPromises);
+      cids.push(upload.IpfsHash);
+    }
     return cids;
   } catch (error) {
     console.error(error);
