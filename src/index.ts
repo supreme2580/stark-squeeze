@@ -1,4 +1,4 @@
-import { GetCIDResponse, PinataSDK } from "pinata-web3";
+import { GetCIDResponse, PinataSDK, PinResponse } from "pinata-web3";
 
 interface UploadOptions {
   file: File | Blob;
@@ -94,4 +94,49 @@ export async function getFile(jwt: string, gateway: string, hash: string): Promi
         console.error(error);
         throw error;
     }
+}
+
+/**
+ * Uploads an array of files to IPFS using Pinata as a folder and returns the IPFS hash and other details
+ * 
+ * @param jwt - Pinata JWT authentication token
+ * @param gateway - IPFS gateway domain (e.g., "gateway.pinata.cloud")
+ * @param filesArray - Array of File objects to upload as a folder
+ * 
+ * @returns Promise that resolves to the PinResponse object containing the IPFS hash and other details
+ * 
+ * @example
+ * typescript
+ * // Upload multiple files as a folder
+ * const files = [
+ *   new File(["hello world!"], "hello.txt", { type: "text/plain" }),
+ *   new File(["hello world again!"], "hello2.txt", { type: "text/plain" })
+ * ];
+ * const response = await uploadFiles(
+ *   "your-pinata-jwt",
+ *   "gateway.pinata.cloud",
+ *   files
+ * );
+ * // Returns: { IpfsHash: "Qm...", PinSize: 123, Timestamp: "2023-10-01T12:00:00Z" }
+ * 
+ * 
+ * @throws Will throw an error if the upload fails
+ */
+export async function uploadFiles(
+  jwt: string,
+  gateway: string,
+  filesArray: File[]
+): Promise<PinResponse> {
+  try {
+    const pinata = new PinataSDK({
+      pinataJwt: jwt,
+      pinataGateway: gateway,
+    });
+
+    const upload = await pinata.upload.fileArray(filesArray);
+    return upload;
+  } catch (error) {
+    console.error(error);
+    throw error;
+  }
 }
