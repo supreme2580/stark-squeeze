@@ -101,31 +101,31 @@ export async function getFile(jwt: string, gateway: string, hash: string): Promi
  * 
  * @param jwt - Pinata JWT authentication token
  * @param gateway - IPFS gateway domain (e.g., "gateway.pinata.cloud")
- * @param files - Array of objects containing file, fileName, and fileType
+ * @param filesArray - Array of File objects to upload
  * 
  * @returns Promise that resolves to an array of CIDs of the uploaded files
  * 
  * @example
  * ```typescript
  * // Upload multiple image files
- * const files = [
- *   { file: new File([blob1], "image1.jpg", { type: "image/jpeg" }), fileName: "image1.jpg", fileType: "image/jpeg" },
- *   { file: new File([blob2], "image2.png", { type: "image/png" }), fileName: "image2.png", fileType: "image/png" }
+ * const filesArray = [
+ *   new File([blob1], "image1.jpg", { type: "image/jpeg" }),
+ *   new File([blob2], "image2.png", { type: "image/png" })
  * ];
- * const cids = await uploadFiles(
+ * const cids = await uploadFileArray(
  *   "your-pinata-jwt",
  *   "gateway.pinata.cloud",
- *   files
+ *   filesArray
  * );
  * // Returns: ["QmHash1...", "QmHash2..."]
  * ```
  * 
  * @throws Will throw an error if any of the uploads fail
  */
-export async function uploadFiles(
+export async function uploadFileArray(
   jwt: string,
   gateway: string,
-  files: UploadOptions[]
+  filesArray: File[]
 ): Promise<string[]> {
   try {
     const pinata = new PinataSDK({
@@ -133,17 +133,12 @@ export async function uploadFiles(
       pinataGateway: gateway,
     });
 
-    const cids: string[] = [];
-
-    for (const fileOptions of files) {
-      const file = fileOptions.file instanceof File 
-        ? fileOptions.file 
-        : new File([fileOptions.file], fileOptions.fileName, { type: fileOptions.fileType });
-
+    const uploadPromises = filesArray.map(async (file) => {
       const upload = await pinata.upload.file(file);
-      cids.push(upload.IpfsHash);
-    }
-    return cids;
+      return upload.IpfsHash;
+    });
+
+    return await Promise.all(uploadPromises);
   } catch (error) {
     console.error(error);
     throw error;
