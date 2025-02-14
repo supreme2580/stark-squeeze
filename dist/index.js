@@ -12,6 +12,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.upload = upload;
 exports.getFile = getFile;
 const pinata_web3_1 = require("pinata-web3");
+// Codebase cleanup update
+
 /**
  * Uploads a file to IPFS using Pinata and returns the IPFS gateway URL
  *
@@ -24,44 +26,36 @@ const pinata_web3_1 = require("pinata-web3");
  *
  * @returns Promise that resolves to the complete IPFS gateway URL of the uploaded file
  *
- * @example
- * ```typescript
- * // Upload an image file
- * const imageFile = new File([blob], "image.jpg", { type: "image/jpeg" });
- * const url = await upload(
- *   "your-pinata-jwt",
- *   "gateway.pinata.cloud",
- *   {
- *     file: imageFile,
- *     fileName: "image.jpg",
- *     fileType: "image/jpeg"
- *   }
- * );
- * // Returns: https://gateway.pinata.cloud/ipfs/Qm...
- * ```
- *
  * @throws Will throw an error if the upload fails
  */
 function upload(jwt, gateway, options) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
+            // Initialize Pinata SDK with authentication token and gateway
             const pinata = new pinata_web3_1.PinataSDK({
                 pinataJwt: jwt,
                 pinataGateway: gateway,
             });
+            
+            // Ensure the uploaded data is a File instance
             const file = options.file instanceof File
                 ? options.file
                 : new File([options.file], options.fileName, { type: options.fileType });
+            
+            // Upload file to IPFS using Pinata
             const upload = yield pinata.upload.file(file);
+            
+            // Construct and return the IPFS URL
             const url = `https://${gateway}/ipfs/${upload.IpfsHash}`;
             return url;
-        }
+        } 
         catch (error) {
-            console.error(error);
+            console.error("Upload failed:", error);
             throw error;
         }
     });
 }
+
 /**
  * Retrieves a file from IPFS using Pinata gateway
  *
@@ -71,31 +65,25 @@ function upload(jwt, gateway, options) {
  *
  * @returns Promise that resolves to the GetCIDResponse object containing file details
  *
- * @example
- * ```typescript
- * // Retrieve a file using its IPFS hash
- * const fileDetails = await getFile(
- *   "your-pinata-jwt",
- *   "gateway.pinata.cloud",
- *   "QmHash..."
- * );
- * ```
  *
  * @throws Will throw an error if the file retrieval fails
  */
 function getFile(jwt, gateway, hash) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
+            // Initialize Pinata SDK with authentication token and gateway
             const pinata = new pinata_web3_1.PinataSDK({
                 pinataJwt: jwt,
                 pinataGateway: gateway,
             });
+            
+            // Retrieve the file from IPFS using the provided hash
             const file = yield pinata.gateways.get(hash);
-            console.log(file);
+            
+            console.log("File retrieved:", file);
             return file;
-        }
-        catch (error) {
-            console.error(error);
+        } catch (error) {
+            console.error("File retrieval failed:", error);
             throw error;
         }
     });
