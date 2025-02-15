@@ -1,4 +1,5 @@
 import { GetCIDResponse, PinataSDK, PinResponse } from "pinata-web3";
+import crypto from "crypto";
 
 interface UploadOptions {
   file: File | Blob;
@@ -6,6 +7,22 @@ interface UploadOptions {
   fileType: string;
 }
 
+function encrypt(text: string, key: string): string {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-ctr', Buffer.from(key, 'hex'), iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return iv.toString('hex') + encrypted;
+}
+
+function decrypt(text: string, key: string): string {
+  const iv = Buffer.from(text.slice(0, 32), 'hex');
+  const encryptedText = text.slice(32);
+  const decipher = crypto.createDecipheriv('aes-256-ctr', Buffer.from(key, 'hex'), iv);
+  let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
 /**
  * Uploads a file to IPFS using Pinata and returns the IPFS gateway URL
  * 
@@ -39,7 +56,9 @@ interface UploadOptions {
 export async function upload(
   jwt: string,
   gateway: string,
-  options: UploadOptions
+  options: UploadOptions,
+  cidEncryptionKey: string,
+  shouldEncrypt: boolean
 ): Promise<string> {
   try {
     const pinata = new PinataSDK({
@@ -52,14 +71,20 @@ export async function upload(
       : new File([options.file], options.fileName, { type: options.fileType });
 
     const upload = await pinata.upload.file(file);
-    const url = `https://${gateway}/ipfs/${upload.IpfsHash}`;
-    return url;
+    let ipfsHash = upload.IpfsHash;
+    let fileName = options.fileName;
+    
+    if (shouldEncrypt) {
+      ipfsHash = encrypt(ipfsHash, cidEncryptionKey);
+      fileName = encrypt(fileName, cidEncryptionKey);
+    }
+
+    return `https://${gateway}/ipfs/${ipfsHash}`;
   } catch (error) {
     console.error(error);
     throw error;
   }
 }
-
 /**
  * Retrieves a file from IPFS using Pinata gateway
  * 
@@ -81,19 +106,30 @@ export async function upload(
  * 
  * @throws Will throw an error if the file retrieval fails
  */
-export async function getFile(jwt: string, gateway: string, hash: string): Promise<GetCIDResponse> {
-    try {
-        const pinata = new PinataSDK({
-            pinataJwt: jwt,
-            pinataGateway: gateway,
-        });
-        const file = await pinata.gateways.get(hash);
-        console.log(file);
-        return file;
-    } catch (error) {
-        console.error(error);
-        throw error;
+export async function getFile(
+  jwt: string,
+  gateway: string,
+  hash: string,
+  cidEncryptionKey: string,
+  shouldDecrypt: boolean
+): Promise<GetCIDResponse> {
+  try {
+    if (shouldDecrypt) {
+      hash = decrypt(hash, cidEncryptionKey);
     }
+    
+    const pinata = new PinataSDK({
+      pinataJwt: jwt,
+      pinataGateway: gateway,
+    });
+    
+    const file = await pinata.gateways.get(hash);
+    console.log(file);
+    return file;
+  } catch (error) {
+    console.error(error);
+    throw error;
+  }
 }
 
 /**
@@ -125,7 +161,9 @@ export async function getFile(jwt: string, gateway: string, hash: string): Promi
 export async function uploadFiles(
   jwt: string,
   gateway: string,
-  filesArray: File[]
+  filesArray: File[],
+  cidEncryptionKey: string,
+  shouldEncrypt: boolean
 ): Promise<PinResponse> {
   try {
     const pinata = new PinataSDK({
@@ -134,7 +172,13 @@ export async function uploadFiles(
     });
 
     const upload = await pinata.upload.fileArray(filesArray);
-    return upload;
+    let ipfsHash = upload.IpfsHash;
+    
+    if (shouldEncrypt) {
+      ipfsHash = encrypt(ipfsHash, cidEncryptionKey);
+    }
+    
+    return { ...upload, IpfsHash: ipfsHash };
   } catch (error) {
     console.error(error);
     throw error;
