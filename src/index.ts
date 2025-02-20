@@ -1,4 +1,5 @@
 import { GetCIDResponse, PinataSDK, PinResponse } from "pinata-web3";
+import { Account, Contract, RpcProvider } from "starknet";
 
 interface UploadOptions {
   file: File | Blob;
@@ -125,7 +126,8 @@ export async function getFile(jwt: string, gateway: string, hash: string): Promi
 export async function uploadFiles(
   jwt: string,
   gateway: string,
-  filesArray: File[]
+  filesArray: File[],
+  encrypted: boolean
 ): Promise<PinResponse> {
   try {
     const pinata = new PinataSDK({
@@ -134,9 +136,34 @@ export async function uploadFiles(
     });
 
     const upload = await pinata.upload.fileArray(filesArray);
+    //todo use encrypted to encrypt the upload (cid) or not
     return upload;
   } catch (error) {
     console.error(error);
     throw error;
   }
+}
+
+export async function contract_call(
+  { jwt, gateway, filesArray, encrypted, name, file_type, file_format }:
+  { jwt: string, gateway: string, filesArray: File[], encrypted: boolean, name: string, file_type: string, file_format: string }
+) {
+  const provider = new RpcProvider({
+    nodeUrl: process.env.STARKNET_SEPOLIA_NODE_URL || '',
+  })
+  const private_key = process.env.STARKNET_PRIVATE_KEY || '';
+  const public_key = process.env.STARKNET_PUBLIC_KEY || '';
+  const contract_address = process.env.STARKNET_CONTRACT_ADDRESS || '';
+  const account = new Account(provider, public_key, private_key);
+  const { abi } = await provider.getClassAt(contract_address);
+  if (abi === undefined) {
+    throw new Error('no abi found.');
+  }
+  const contract = new Contract(abi, contract_address, provider);
+  contract.connect(account);
+  const cid = uploadFiles(jwt, gateway, filesArray, encrypted);
+  const contract_call = contract.populate('add_data', [cid, encrypted, name, file_type, file_format]);
+  const add_data = await contract.add_data(contract_call.calldata);
+  const tx = await provider.waitForTransaction(add_data.transaction_hash);
+  return tx;
 }
