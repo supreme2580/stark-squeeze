@@ -151,31 +151,14 @@ export async function uploadFiles(
  * @returns {Promise<void>} - A promise that resolves when the file is saved.
  */
 export async function saveDecompressedFile(filePath: string, data: Buffer): Promise<void> {
-  return new Promise((resolve, reject) => {
-      const outputDir = path.dirname(filePath);
-
-      if (!fs.existsSync(outputDir)) {
-          fs.mkdirSync(outputDir, { recursive: true });
-      }
-
-      fs.writeFile(filePath, data, (err) => {
-          if (err) {
-              reject(err);
-          } else {
-              resolve();
-          }
-      });
-  });
+    try {
+        const outputDir = path.dirname(filePath);
+        await fs.promises.mkdir(outputDir, { recursive: true });
+        await fs.promises.writeFile(filePath, data);
+    } catch (error) {
+        console.error(`Error saving file: ${error}`);
+        throw error;
+    }
 }
 
-
-// Example
-// (async () => {
-//   try {
-//       await saveDecompressedFile('./output/reconstructed_file1.txt', Buffer.from('Hello, Testing Buffer Decompressed File1!'));
-//       await saveDecompressedFile('./output/reconstructed_file2.txt', Buffer.from('Hello, Testing Buffer Decompressed File2!'));
-//       console.log('File saved successfully!');
-//   } catch (err) {
-//       console.error('Error saving file:', err);
-//   }
-// })();
+// saveDecompressedFile('./output.txt', Buffer.from(`Hello, this is a test!`))
