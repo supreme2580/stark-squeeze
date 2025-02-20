@@ -11,10 +11,9 @@ export async function saveDecompressedFile(filePath: string, data: Buffer): Prom
         const outputDir = path.dirname(filePath);
         await fs.promises.mkdir(outputDir, { recursive: true });
         await fs.promises.writeFile(filePath, data);
+        console.log('executed')
     } catch (error) {
         console.error(`Error saving file: ${error}`);
         throw error;
     }
 }
-
-// saveDecompressedFile('./output.txt', Buffer.from(`Hello, this is a test!`))
