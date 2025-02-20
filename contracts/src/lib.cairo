@@ -2,10 +2,10 @@ use starknet::ContractAddress;
 
 #[starknet::interface]
 trait IDataStorage<TContractState> {
-    fn add_data(ref self: TContractState, cid: felt252, file_format: ByteArray);
+    fn add_data(ref self: TContractState, cid: ByteArray, file_format: ByteArray);
     fn get_data(
         self: @TContractState, address: ContractAddress
-    ) -> (felt252, ContractAddress, u64, ByteArray);
+    ) -> (ByteArray, ContractAddress, u64, ByteArray);
 }
 
 #[starknet::contract]
@@ -23,7 +23,7 @@ mod DataStorage {
 
     #[derive(Drop, starknet::Event)]
     struct DataAdded {
-        cid: felt252,
+        cid: ByteArray,
         address: ContractAddress,
         timestamp: u64,
         file_format: ByteArray,
@@ -31,7 +31,7 @@ mod DataStorage {
 
     #[storage]
     struct Storage {
-        cid: felt252,
+        cid: ByteArray,
         address: ContractAddress,
         timestamp: u64,
         file_format: ByteArray,
@@ -39,11 +39,11 @@ mod DataStorage {
 
     #[abi(embed_v0)]
     impl DataStorage of super::IDataStorage<ContractState> {
-        fn add_data(ref self: ContractState, cid: felt252, file_format: ByteArray) {
+        fn add_data(ref self: ContractState, cid: ByteArray, file_format: ByteArray) {
             let caller = get_caller_address();
             let timestamp = get_block_timestamp();
 
-            self.cid.write(cid);
+            self.cid.write(cid.clone());
             self.address.write(caller);
             self.timestamp.write(timestamp);
             self.file_format.write(file_format.clone());
