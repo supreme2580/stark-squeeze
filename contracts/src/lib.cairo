@@ -53,7 +53,7 @@ mod DataStorage {
 
         fn get_data(
             self: @ContractState, address: ContractAddress
-        ) -> (felt252, ContractAddress, u64, ByteArray) {
+        ) -> (ByteArray, ContractAddress, u64, ByteArray) {
             assert(self.address.read() == address, 'Address not found');
             (self.cid.read(), self.address.read(), self.timestamp.read(), self.file_format.read())
         }
