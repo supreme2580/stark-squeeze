@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.upload = upload;
 exports.getFile = getFile;
+exports.uploadFiles = uploadFiles;
 const pinata_web3_1 = require("pinata-web3");
 /**
  * Uploads a file to IPFS using Pinata and returns the IPFS gateway URL
@@ -93,6 +94,48 @@ function getFile(jwt, gateway, hash) {
             const file = yield pinata.gateways.get(hash);
             console.log(file);
             return file;
+        }
+        catch (error) {
+            console.error(error);
+            throw error;
+        }
+    });
+}
+/**
+ * Uploads an array of files to IPFS using Pinata as a folder and returns the IPFS hash and other details
+ *
+ * @param jwt - Pinata JWT authentication token
+ * @param gateway - IPFS gateway domain (e.g., "gateway.pinata.cloud")
+ * @param filesArray - Array of File objects to upload as a folder
+ *
+ * @returns Promise that resolves to the PinResponse object containing the IPFS hash and other details
+ *
+ * @example
+ * typescript
+ * // Upload multiple files as a folder
+ * const files = [
+ *   new File(["hello world!"], "hello.txt", { type: "text/plain" }),
+ *   new File(["hello world again!"], "hello2.txt", { type: "text/plain" })
+ * ];
+ * const response = await uploadFiles(
+ *   "your-pinata-jwt",
+ *   "gateway.pinata.cloud",
+ *   files
+ * );
+ * // Returns: { IpfsHash: "Qm...", PinSize: 123, Timestamp: "2023-10-01T12:00:00Z" }
+ *
+ *
+ * @throws Will throw an error if the upload fails
+ */
+function uploadFiles(jwt, gateway, filesArray) {
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            const pinata = new pinata_web3_1.PinataSDK({
+                pinataJwt: jwt,
+                pinataGateway: gateway,
+            });
+            const upload = yield pinata.upload.fileArray(filesArray);
+            return upload;
         }
         catch (error) {
             console.error(error);
