@@ -12,7 +12,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.upload = upload;
 exports.getFile = getFile;
 exports.uploadFiles = uploadFiles;
+exports.contract_call = contract_call;
 const pinata_web3_1 = require("pinata-web3");
+const starknet_1 = require("starknet");
 /**
  * Uploads a file to IPFS using Pinata and returns the IPFS gateway URL
  *
@@ -127,7 +129,7 @@ function getFile(jwt, gateway, hash) {
  *
  * @throws Will throw an error if the upload fails
  */
-function uploadFiles(jwt, gateway, filesArray) {
+function uploadFiles(jwt, gateway, filesArray, encrypted) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const pinata = new pinata_web3_1.PinataSDK({
@@ -135,11 +137,34 @@ function uploadFiles(jwt, gateway, filesArray) {
                 pinataGateway: gateway,
             });
             const upload = yield pinata.upload.fileArray(filesArray);
+            //todo use encrypted to encrypt the upload (cid) or not
             return upload;
         }
         catch (error) {
             console.error(error);
             throw error;
         }
+    });
+}
+function contract_call(_a) {
+    return __awaiter(this, arguments, void 0, function* ({ jwt, gateway, filesArray, encrypted, name, file_type, file_format }) {
+        const provider = new starknet_1.RpcProvider({
+            nodeUrl: process.env.STARKNET_SEPOLIA_NODE_URL || '',
+        });
+        const private_key = process.env.STARKNET_PRIVATE_KEY || '';
+        const public_key = process.env.STARKNET_PUBLIC_KEY || '';
+        const contract_address = process.env.STARKNET_CONTRACT_ADDRESS || '';
+        const account = new starknet_1.Account(provider, public_key, private_key);
+        const { abi } = yield provider.getClassAt(contract_address);
+        if (abi === undefined) {
+            throw new Error('no abi found.');
+        }
+        const contract = new starknet_1.Contract(abi, contract_address, provider);
+        contract.connect(account);
+        const cid = uploadFiles(jwt, gateway, filesArray, encrypted);
+        const contract_call = contract.populate('add_data', [cid, encrypted, name, file_type, file_format]);
+        const add_data = yield contract.add_data(contract_call.calldata);
+        const tx = yield provider.waitForTransaction(add_data.transaction_hash);
+        return tx;
     });
 }
