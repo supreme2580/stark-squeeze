@@ -13,12 +13,11 @@ import { promises as fs } from "fs";
  * @throws {Error} - Throws an error if the file cannot be read.
  * 
  * @example
- * const filePath = "path/to/your/file.txt"; // Use forward slashes or escape backslashes
+ * const filePath = "path/to/your/file.txt";
  * readFileAsBinary(filePath)
  *   .then(binaryString => console.log("Binary string:", binaryString))
  *   .catch(error => console.error(error));
  */
-
 
 async function readFileAsBinary(filePath: string): Promise<string> {
   try {

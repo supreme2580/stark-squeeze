@@ -10,6 +10,24 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs_1 = require("fs");
+/**
+ * Reads a file and converts its contents to a binary string.
+ *
+ * This function reads the specified file as a buffer, converts each byte of the buffer
+ * to its binary representation, and pads the resulting binary string to ensure its length
+ * is a multiple of 5 bits.
+ *
+ * @param {string} filePath - The path to the file to be read.
+ * @returns {Promise<string>} - A promise that resolves to the padded binary string representation of the file contents.
+ *
+ * @throws {Error} - Throws an error if the file cannot be read.
+ *
+ * @example
+ * const filePath = "C:/Users/USER/Documents/onlydust.txt";
+ * readFileAsBinary(filePath)
+ *   .then(binaryString => console.log("Binary string:", binaryString))
+ *   .catch(error => console.error(error));
+ */
 function readFileAsBinary(filePath) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
