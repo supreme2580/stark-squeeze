@@ -2,7 +2,7 @@ use starknet::ContractAddress;
 
 #[starknet::interface]
 trait IDataStorage<TContractState> {
-    fn add_data(ref self: TContractState, cid: ByteArray, file_format: ByteArray, encrypted: bool);
+    fn add_data(ref self: TContractState, cid: ByteArray, file_format: ByteArray, encrypted: bool, file_size:u64);
     fn get_data(
         self: @TContractState, address: ContractAddress
     ) -> (ByteArray, ContractAddress, u64, ByteArray, bool);
@@ -19,6 +19,7 @@ mod DataStorage {
     #[derive(Drop, starknet::Event)]
     enum Event {
         DataAdded: DataAdded,
+        FileSizeWarning: FileSizeWarning,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -28,6 +29,12 @@ mod DataStorage {
         timestamp: u64,
         file_format: ByteArray,
         encrypted: bool,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct FileSizeWarning {
+        cid: ByteArray,
+        file_size: u64,
     }
 
     #[storage]
@@ -41,9 +48,13 @@ mod DataStorage {
 
     #[abi(embed_v0)]
     impl DataStorage of super::IDataStorage<ContractState> {
-        fn add_data(ref self: ContractState, cid: ByteArray, file_format: ByteArray, encrypted: bool) {
+        fn add_data(ref self: ContractState, cid: ByteArray, file_format: ByteArray, encrypted: bool, file_size: u64) {
             let caller = get_caller_address();
             let timestamp = get_block_timestamp();
+
+            if file_size > 5 * 1024 * 1024 {
+                self.emit(FileSizeWarning { cid: cid.clone(), file_size});
+            }
 
             self.cid.write(cid.clone());
             self.address.write(caller);
