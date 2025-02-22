@@ -3,9 +3,9 @@ import { promises as fs } from "fs";
 /**
  * Reads a file and converts its contents to a binary string.
  * 
- * This function reads the specified file as a buffer, converts each byte of the buffer
- * to its binary representation, and pads the resulting binary string to ensure its length
- * is a multiple of 5 bits.
+ * This function takes the path to a file, reads the file as a buffer, and then converts each byte of the buffer
+ * into its binary representation. It ensures that the resulting binary string's length is a multiple of 5 bits
+ * by padding it with zeros if necessary.
  * 
  * @param {string} filePath - The path to the file to be read.
  * @returns {Promise<string>} - A promise that resolves to the padded binary string representation of the file contents.
@@ -25,23 +25,16 @@ async function readFileAsBinary(filePath: string): Promise<string> {
     const buffer: Buffer = await fs.readFile(filePath);
 
     // Convert the buffer to a binary string
-    let binaryString = "";
-    for (const byte of buffer) {
-      binaryString += byte.toString(2).padStart(8, "0");
-    }
+    const binaryString = Array.from(buffer, byte => byte.toString(2).padStart(8, "0")).join("");
 
     // Pad the binary string to a multiple of 5 bits
-    const paddingLength: number = (5 - (binaryString.length % 5)) % 5;
-    const paddedBinaryString: string = binaryString.padEnd(binaryString.length + paddingLength, "0");
+    const paddedBinaryString: string = binaryString.padEnd(binaryString.length + (5 - (binaryString.length % 5)) % 5, "0");
 
     return paddedBinaryString;
   } catch (error) {
     // Handle file reading errors
-    if (error instanceof Error) {
-      throw new Error(`Error reading file: ${error.message}`);
-    } else {
-      throw new Error("An unknown error occurred while reading the file");
-    }
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    throw new Error(`Error reading file: ${errorMessage}`);
   }
 }
 
