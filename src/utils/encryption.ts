@@ -22,7 +22,6 @@ export function encrypt(text: string, key: string): string {
  * @param {string} key - The encryption key.
  * @returns {string} - The decrypted text.
  */
-
 export function decrypt(text: string, key: string): string {
   const textParts = text.split(':');
   const iv = Buffer.from(textParts.shift()!, 'hex');
