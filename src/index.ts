@@ -52,6 +52,11 @@ export async function upload(
       ? options.file 
       : new File([options.file], options.fileName, { type: options.fileType });
 
+    // Check file size and log a warning if it exceeds 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      console.warn('Warning: Uploading a file larger than 5MB may take a bit of time.');
+    }
+
     const upload = await pinata.upload.file(file);
     const url = `https://${gateway}/ipfs/${upload.IpfsHash}`;
     return url;
@@ -135,8 +140,14 @@ export async function uploadFiles(
       pinataGateway: gateway,
     });
 
+    // Check total size of files and log a warning if it exceeds 5MB
+    const totalSize = filesArray.reduce((acc, file) => acc + file.size, 0);
+    if (totalSize > 5 * 1024 * 1024) {
+      console.warn('Warning: Uploading files larger than 5MB may take a bit of time.');
+    }
+
     const upload = await pinata.upload.fileArray(filesArray);
-    //todo use encrypted to encrypt the upload (cid) or not
+    // TODO: Use encrypted to encrypt the upload (cid) or not
     return upload;
   } catch (error) {
     console.error(error);
