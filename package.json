@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
+    "start-indexer": "apibara run script.js -A  dna_xxx",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
