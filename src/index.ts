@@ -1,10 +1,45 @@
 import { GetCIDResponse, PinataSDK, PinResponse } from "pinata-web3";
 import { Account, Contract, RpcProvider } from "starknet";
+import crypto from 'crypto';
 
 interface UploadOptions {
   file: File | Blob;
   fileName: string;
   fileType: string;
+  cid_encryption_key?: string;
+  should_encrypt?: boolean;
+}
+
+/**
+ * Encrypts a string using the provided encryption key.
+ * 
+ * @param {string} text - The text to encrypt.
+ * @param {string} key - The encryption key.
+ * @returns {string} - The encrypted text.
+ */
+function encrypt(text: string, key: string): string {
+  const iv = crypto.randomBytes(16);
+  const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(key), iv);
+  let encrypted = cipher.update(text);
+  encrypted = Buffer.concat([encrypted, cipher.final()]);
+  return iv.toString('hex') + ':' + encrypted.toString('hex');
+}
+
+/**
+ * Decrypts a string using the provided encryption key.
+ * 
+ * @param {string} text - The text to decrypt.
+ * @param {string} key - The encryption key.
+ * @returns {string} - The decrypted text.
+ */
+function decrypt(text: string, key: string): string {
+  const textParts = text.split(':');
+  const iv = Buffer.from(textParts.shift()!, 'hex');
+  const encryptedText = Buffer.from(textParts.join(':'), 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key), iv);
+  let decrypted = decipher.update(encryptedText);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString();
 }
 
 /**
@@ -16,6 +51,8 @@ interface UploadOptions {
  * @param options.file - File or Blob to upload
  * @param options.fileName - Name of the file
  * @param options.fileType - MIME type of the file (e.g., "image/jpeg")
+ * @param options.cid_encryption_key - Optional encryption key for the CID
+ * @param options.should_encrypt - Optional flag to indicate if encryption should be applied
  * 
  * @returns Promise that resolves to the complete IPFS gateway URL of the uploaded file
  * 
@@ -29,7 +66,9 @@ interface UploadOptions {
  *   {
  *     file: imageFile,
  *     fileName: "image.jpg",
- *     fileType: "image/jpeg"
+ *     fileType: "image/jpeg",
+ *     cid_encryption_key: "your-encryption-key",
+ *     should_encrypt: true
  *   }
  * );
  * // Returns: https://gateway.pinata.cloud/ipfs/Qm...
@@ -48,12 +87,17 @@ export async function upload(
       pinataGateway: gateway,
     });
 
-    const file = options.file instanceof File 
-      ? options.file 
+    const file = options.file instanceof File
+      ? options.file
       : new File([options.file], options.fileName, { type: options.fileType });
 
     const upload = await pinata.upload.file(file);
-    const url = `https://${gateway}/ipfs/${upload.IpfsHash}`;
+    let url = `https://${gateway}/ipfs/${upload.IpfsHash}`;
+
+    if (options.should_encrypt && options.cid_encryption_key) {
+      url = encrypt(url, options.cid_encryption_key);
+    }
+
     return url;
   } catch (error) {
     console.error(error);
@@ -67,6 +111,7 @@ export async function upload(
  * @param jwt - Pinata JWT authentication token
  * @param gateway - IPFS gateway domain (e.g., "gateway.pinata.cloud")
  * @param hash - IPFS hash (CID) of the file to retrieve
+ * @param cid_encryption_key - Optional encryption key for the CID
  * 
  * @returns Promise that resolves to the GetCIDResponse object containing file details
  * 
@@ -76,25 +121,31 @@ export async function upload(
  * const fileDetails = await getFile(
  *   "your-pinata-jwt",
  *   "gateway.pinata.cloud",
- *   "QmHash..."
+ *   "QmHash...",
+ *   "your-encryption-key"
  * );
  * ```
  * 
  * @throws Will throw an error if the file retrieval fails
  */
-export async function getFile(jwt: string, gateway: string, hash: string): Promise<GetCIDResponse> {
-    try {
-        const pinata = new PinataSDK({
-            pinataJwt: jwt,
-            pinataGateway: gateway,
-        });
-        const file = await pinata.gateways.get(hash);
-        console.log(file);
-        return file;
-    } catch (error) {
-        console.error(error);
-        throw error;
+export async function getFile(jwt: string, gateway: string, hash: string, cid_encryption_key?: string): Promise<GetCIDResponse> {
+  try {
+    const pinata = new PinataSDK({
+      pinataJwt: jwt,
+      pinataGateway: gateway,
+    });
+
+    if (cid_encryption_key) {
+      hash = decrypt(hash, cid_encryption_key);
     }
+
+    const file = await pinata.gateways.get(hash);
+    console.log(file);
+    return file;
+  } catch (error) {
+    console.error(error);
+    throw error;
+  }
 }
 
 /**
@@ -103,6 +154,8 @@ export async function getFile(jwt: string, gateway: string, hash: string): Promi
  * @param jwt - Pinata JWT authentication token
  * @param gateway - IPFS gateway domain (e.g., "gateway.pinata.cloud")
  * @param filesArray - Array of File objects to upload as a folder
+ * @param cid_encryption_key - Optional encryption key for the CIDs
+ * @param should_encrypt - Optional flag to indicate if encryption should be applied
  * 
  * @returns Promise that resolves to the PinResponse object containing the IPFS hash and other details
  * 
@@ -116,10 +169,11 @@ export async function getFile(jwt: string, gateway: string, hash: string): Promi
  * const response = await uploadFiles(
  *   "your-pinata-jwt",
  *   "gateway.pinata.cloud",
- *   files
+ *   files,
+ *   "your-encryption-key",
+ *   true
  * );
  * // Returns: { IpfsHash: "Qm...", PinSize: 123, Timestamp: "2023-10-01T12:00:00Z" }
- * 
  * 
  * @throws Will throw an error if the upload fails
  */
@@ -127,7 +181,8 @@ export async function uploadFiles(
   jwt: string,
   gateway: string,
   filesArray: File[],
-  encrypted: boolean
+  cid_encryption_key?: string,
+  should_encrypt?: boolean
 ): Promise<PinResponse> {
   try {
     const pinata = new PinataSDK({
@@ -136,7 +191,11 @@ export async function uploadFiles(
     });
 
     const upload = await pinata.upload.fileArray(filesArray);
-    //todo use encrypted to encrypt the upload (cid) or not
+
+    if (should_encrypt && cid_encryption_key) {
+      upload.IpfsHash = encrypt(upload.IpfsHash, cid_encryption_key);
+    }
+
     return upload;
   } catch (error) {
     console.error(error);
@@ -144,9 +203,39 @@ export async function uploadFiles(
   }
 }
 
+/**
+ * Calls a contract function to add data, optionally encrypting the CID and name.
+ * 
+ * @param jwt - Pinata JWT authentication token
+ * @param gateway - IPFS gateway domain (e.g., "gateway.pinata.cloud")
+ * @param filesArray - Array of File objects to upload
+ * @param cid_encryption_key - Optional encryption key for the CIDs
+ * @param should_encrypt - Optional flag to indicate if encryption should be applied
+ * @param name - Name of the data
+ * @param file_type - Type of the file
+ * @param file_format - Format of the file
+ * 
+ * @returns Promise that resolves to the transaction result
+ * 
+ * @example
+ * ```typescript
+ * const tx = await contract_call({
+ *   jwt: "your-pinata-jwt",
+ *   gateway: "gateway.pinata.cloud",
+ *   filesArray: [new File(["hello world!"], "hello.txt", { type: "text/plain" })],
+ *   cid_encryption_key: "your-encryption-key",
+ *   should_encrypt: true,
+ *   name: "example",
+ *   file_type: "text/plain",
+ *   file_format: "txt"
+ * });
+ * ```
+ * 
+ * @throws Will throw an error if the contract call fails
+ */
 export async function contract_call(
-  { jwt, gateway, filesArray, encrypted, name, file_type, file_format }:
-  { jwt: string, gateway: string, filesArray: File[], encrypted: boolean, name: string, file_type: string, file_format: string }
+  { jwt, gateway, filesArray, cid_encryption_key, should_encrypt, name, file_type, file_format }:
+    { jwt: string, gateway: string, filesArray: File[], cid_encryption_key?: string, should_encrypt?: boolean, name: string, file_type: string, file_format: string }
 ) {
   const provider = new RpcProvider({
     nodeUrl: process.env.STARKNET_SEPOLIA_NODE_URL || '',
@@ -161,8 +250,10 @@ export async function contract_call(
   }
   const contract = new Contract(abi, contract_address, provider);
   contract.connect(account);
-  const cid = uploadFiles(jwt, gateway, filesArray, encrypted);
-  const contract_call = contract.populate('add_data', [cid, encrypted, name, file_type, file_format]);
+  const uploadResponse = await uploadFiles(jwt, gateway, filesArray, cid_encryption_key, should_encrypt);
+  const cid = uploadResponse.IpfsHash;
+  const encryptedName = should_encrypt ? encrypt(name, cid_encryption_key!) : name;
+  const contract_call = contract.populate('add_data', [cid, should_encrypt || false, encryptedName, file_type, file_format]);
   const add_data = await contract.add_data(contract_call.calldata);
   const tx = await provider.waitForTransaction(add_data.transaction_hash);
   return tx;
