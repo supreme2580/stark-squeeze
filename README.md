@@ -31,3 +31,4 @@ To use StarkSqueeze in your project, follow these steps:
 - Reduce data size for direct Starknet storage
 - Possibly Remove IPFS dependency (Pinata)
 - Seamless integration for dApp developers
+
