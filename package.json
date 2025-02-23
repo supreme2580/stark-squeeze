@@ -11,6 +11,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@pinata/sdk": "^2.1.0",
     "dotenv": "^16.4.7",
     "fs": "^0.0.1-security",
     "pinata-web3": "^0.5.4",
