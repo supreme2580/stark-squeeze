@@ -1,0 +1,35 @@
+{
+  "projectName": "stark-squeeze",
+  "projectOwner": "Supreme",
+  "repoType": "github",
+  "repoHost": "https://github.com",
+  "files": [
+    "README.md"
+  ],
+  "imageSize": 100,
+  "commit": true,
+  "commitConvention": "angular",
+  "contributors": [
+    {
+      "login": "jfmengels",
+      "name": "Jeroen Engels",
+      "avatar_url": "https://avatars.githubusercontent.com/u/3869412?v=4",
+      "profile": "https://jfmengels.net/",
+      "contributions": [
+        "doc"
+      ]
+    },
+    {
+      "login": "supreme2580",
+      "name": "Supreme Labs",
+      "avatar_url": "https://avatars.githubusercontent.com/u/100731397?v=4",
+      "profile": "https://github.com/supreme2580",
+      "contributions": [
+        "doc",
+        "code"
+      ]
+    }
+  ],
+  "contributorsPerLine": 7,
+  "linkToUsage": true
+}
