@@ -1,2 +1,2 @@
 export * from "./decompressWithBrotli";
-export * from "./reverseSecondDict"
+export * from "./reverseSecondDict";
