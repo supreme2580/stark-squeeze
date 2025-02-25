@@ -1,6 +1,6 @@
 # StarkSqueeze
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-1-orange.svg?style=flat-square)](#contributors-)
+[![All Contributors](https://img.shields.io/badge/all_contributors-2-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 StarkSqueeze is a TypeScript library designed to revolutionize data storage and retrieval on StarkNet. It provides a seamless, efficient solution for dApp developers to store and manage data on-chain, leveraging the speed, security, and immutability of the StarkNet blockchain. With built-in compression techniques and IPFS integration, StarkSqueeze offers the perfect balance between cost-effectiveness and decentralization for your dApp's storage needs.
@@ -46,6 +46,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
   <tbody>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://jfmengels.net/"><img src="https://avatars.githubusercontent.com/u/3869412?v=4?s=100" width="100px;" alt="Jeroen Engels"/><br /><sub><b>Jeroen Engels</b></sub></a><br /><a href="https://github.com/Supreme/stark-squeeze/commits?author=jfmengels" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/supreme2580"><img src="https://avatars.githubusercontent.com/u/100731397?v=4?s=100" width="100px;" alt="Supreme Labs"/><br /><sub><b>Supreme Labs</b></sub></a><br /><a href="https://github.com/Supreme/stark-squeeze/commits?author=supreme2580" title="Documentation">📖</a></td>
     </tr>
   </tbody>
   <tfoot>
