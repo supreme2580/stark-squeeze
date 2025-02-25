@@ -46,7 +46,7 @@ Thanks goes to these wonderful people ([emoji key](https://allcontributors.org/d
   <tbody>
     <tr>
       <td align="center" valign="top" width="14.28%"><a href="https://jfmengels.net/"><img src="https://avatars.githubusercontent.com/u/3869412?v=4?s=100" width="100px;" alt="Jeroen Engels"/><br /><sub><b>Jeroen Engels</b></sub></a><br /><a href="https://github.com/Supreme/stark-squeeze/commits?author=jfmengels" title="Documentation">📖</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/supreme2580"><img src="https://avatars.githubusercontent.com/u/100731397?v=4?s=100" width="100px;" alt="Supreme Labs"/><br /><sub><b>Supreme Labs</b></sub></a><br /><a href="https://github.com/Supreme/stark-squeeze/commits?author=supreme2580" title="Documentation">📖</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/supreme2580"><img src="https://avatars.githubusercontent.com/u/100731397?v=4?s=100" width="100px;" alt="Supreme Labs"/><br /><sub><b>Supreme Labs</b></sub></a><br /><a href="https://github.com/Supreme/stark-squeeze/commits?author=supreme2580" title="Documentation">📖</a> <a href="https://github.com/Supreme/stark-squeeze/commits?author=supreme2580" title="Code">💻</a></td>
     </tr>
   </tbody>
   <tfoot>
