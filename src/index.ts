@@ -210,3 +210,5 @@ function decryptText(encryptedText: string, key: string): string {
   decrypted += decipher.final('utf8');
   return decrypted;
 }
+
+export const getFilesFromApibara = () => fetch(process.env.APIBARA_ENDPOINT || "/")
