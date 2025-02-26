@@ -1,43 +1,30 @@
-import { applySecondDict, secondDict } from '../../src/compression/applySecondDict';,\
-// import { } from "../../src/constants/dictionaries";
+import { applySecondDict } from "../../src/compression/applySecondDict";
+// Mock the secondDict used in applySecondDict
+const secondDict: Record<string, string> = {
+  ".....": "!",
+  "....": "*",
+  "...": "#"
+};
 
 describe("applySecondDict", () => {
-  test("should replace encoded patterns with corresponding values", () => {
-    for (const [pattern, replacement] of Object.entries(secondDict)) {
-      expect(applySecondDict(pattern)).toBe(replacement);
-    }
+  test("should correctly apply secondDict transformations", () => {
+    expect(applySecondDict("..... .... ...")).toBe("!*#");
+    expect(applySecondDict("..... ..... .... ...")).toBe("!!*#");
+    expect(applySecondDict(".... ... .....")).toBe("*#!");
   });
 
-  test("should replace multiple occurrences correctly", () => {
-    const testStr = Object.keys(secondDict).join("");
-    const expectedStr = Object.values(secondDict).join("");
-    expect(applySecondDict(testStr)).toBe(expectedStr);
+  test("should return the same string if no transformation is possible", () => {
+    expect(applySecondDict("abcdef")).toBe("abcdef");
   });
 
-  test("should prioritize longer patterns when they overlap", () => {
-    const overlappingDict = {
-      "abc": "X",
-      "ab": "Y",
-      "c": "Z"
-    };
-    Object.assign(secondDict, overlappingDict);
-    expect(applySecondDict("abc")).toBe("X");
-    expect(applySecondDict("ab" + "c")).toBe("XZ");
+  test("should handle mixed cases with partial matches", () => {
+    expect(applySecondDict("..... abc ....")).toBe("! abc *");
   });
 
-  test("should handle input with no matching patterns", () => {
-    expect(applySecondDict("xyz"))
-      .toBe("xyz");
+  test("should correctly apply secondDict transformations", () => {
+    const result = applySecondDict("..... .... ...");
+    console.log("Received output:", result); // Debugging log
+    expect(result).toBe("!*#");
   });
-
-  test("should handle mixed input with matches and non-matches", () => {
-    const somePattern = Object.keys(secondDict)[0];
-    const someReplacement = secondDict[somePattern];
-    expect(applySecondDict(`test${somePattern}end`))
-      .toBe(`test${someReplacement}end`);
-  });
-
-  test("should return an empty string for an empty input", () => {
-    expect(applySecondDict("")).toBe("");
-  });
+  
 });

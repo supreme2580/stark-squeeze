@@ -2,10 +2,10 @@ use starknet::ContractAddress;
 
 #[starknet::interface]
 trait IDataStorage<TContractState> {
-    fn add_data(ref self: TContractState, cid: ByteArray, file_format: ByteArray, encrypted: bool,file_type:ByteArray);
+    fn add_data(ref self: TContractState, cid: ByteArray, name: ByteArray, file_format: ByteArray, encrypted: bool,file_type:ByteArray);
     fn get_data(
         self: @TContractState, address: ContractAddress
-    ) -> (ByteArray, ContractAddress, u64, ByteArray, bool,ByteArray);
+    ) -> (ByteArray, ByteArray, ContractAddress, u64, ByteArray, bool, ByteArray );
 }
 
 #[starknet::contract]
@@ -24,6 +24,7 @@ mod DataStorage {
     #[derive(Drop, starknet::Event)]
     struct DataAdded {
         cid: ByteArray,
+        name: ByteArray,
         address: ContractAddress,
         timestamp: u64,
         file_format: ByteArray,
@@ -34,6 +35,7 @@ mod DataStorage {
     #[storage]
     struct Storage {
         cid: ByteArray,
+        name: ByteArray,
         address: ContractAddress,
         timestamp: u64,
         file_format: ByteArray,
@@ -43,24 +45,25 @@ mod DataStorage {
 
     #[abi(embed_v0)]
     impl DataStorage of super::IDataStorage<ContractState> {
-        fn add_data(ref self: ContractState, cid: ByteArray, file_format: ByteArray, encrypted: bool,file_type:ByteArray) {
+        fn add_data(ref self: ContractState, cid: ByteArray, name: ByteArray, file_format: ByteArray, encrypted: bool,file_type:ByteArray) {
             let caller = get_caller_address();
             let timestamp = get_block_timestamp();
 
             self.cid.write(cid.clone());
+            self.cid.write(name.clone());
             self.address.write(caller);
             self.timestamp.write(timestamp);
             self.file_format.write(file_format.clone());
             self.encrypted.write(encrypted);
             self.file_type.write(file_type.clone());
-            self.emit(DataAdded { cid, address: caller, timestamp, file_format, encrypted, file_type });
+            self.emit(DataAdded { cid, name, address: caller, timestamp, file_format, encrypted, file_type });
         }
 
         fn get_data(
             self: @ContractState, address: ContractAddress
-        ) -> (ByteArray, ContractAddress, u64, ByteArray, bool, ByteArray ) {
+        ) -> (ByteArray, ByteArray, ContractAddress, u64, ByteArray, bool, ByteArray ) {
             assert(self.address.read() == address, 'Address not found');
-            (self.cid.read(), self.address.read(), self.timestamp.read(), self.file_format.read(), self.encrypted.read(), self.file_type.read())
+            (self.cid.read(), self.name.read(), self.address.read(), self.timestamp.read(), self.file_format.read(), self.encrypted.read(), self.file_type.read())
         }
     }
 }

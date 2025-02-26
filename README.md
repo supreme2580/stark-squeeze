@@ -1,4 +1,7 @@
 # StarkSqueeze
+<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
+[![All Contributors](https://img.shields.io/badge/all_contributors-2-orange.svg?style=flat-square)](#contributors-)
+<!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 StarkSqueeze is a TypeScript library designed to revolutionize data storage and retrieval on StarkNet. It provides a seamless, efficient solution for dApp developers to store and manage data on-chain, leveraging the speed, security, and immutability of the StarkNet blockchain. With built-in compression techniques and IPFS integration, StarkSqueeze offers the perfect balance between cost-effectiveness and decentralization for your dApp's storage needs.
 
@@ -31,3 +34,6 @@ To use StarkSqueeze in your project, follow these steps:
 - Reduce data size for direct Starknet storage
 - Possibly Remove IPFS dependency (Pinata)
 - Seamless integration for dApp developers
+
+## Contributors
+![Contributors](https://contrib.rocks/image?repo=supreme2580/stark-squeeze)
