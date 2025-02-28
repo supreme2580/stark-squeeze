@@ -32,3 +32,12 @@ export const firstDict: Record<string, string> = {
     '11110': '....',
     '11111': '.....'
 };
+
+export const secondDict: Record<string, string> = {
+    '.....': '!',
+    '....': '#',
+    '...': '$',
+    '..': '%',
+    '. .': '&',
+    '.': '*'
+};
