@@ -1,5 +1,6 @@
 import { GetCIDResponse, PinataSDK, PinResponse } from "pinata-web3";
 import { Account, Contract, RpcProvider } from "starknet";
+import crypto from 'crypto';
 
 interface UploadOptions {
   file: File | Blob;
@@ -178,3 +179,36 @@ export async function contract_call(
   const tx = await provider.waitForTransaction(add_data.transaction_hash);
   return tx;
 }
+
+
+function validateKey(key: string): Buffer {
+  const keyBuffer = Buffer.from(key, 'utf-8');
+  if (keyBuffer.length !== 32) {
+      throw new Error('Encryption key must be exactly 32 bytes (256 bits)');
+  }
+  return keyBuffer;
+}
+
+function encryptText(text: string, key: string): string {
+  const keyBuffer = validateKey(key);
+  const iv = crypto.randomBytes(16); // 16-byte IV
+  const cipher = crypto.createCipheriv('aes-256-cbc', keyBuffer, iv);
+  let encrypted = cipher.update(text, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  return iv.toString('hex') + ':' + encrypted; // Store IV with ciphertext
+}
+
+function decryptText(encryptedText: string, key: string): string {
+  const keyBuffer = validateKey(key);
+  const [ivHex, encryptedData] = encryptedText.split(':');
+  if (!ivHex || !encryptedData) {
+      throw new Error('Invalid encrypted format');
+  }
+  const iv = Buffer.from(ivHex, 'hex');
+  const decipher = crypto.createDecipheriv('aes-256-cbc', keyBuffer, iv);
+  let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
+export const getFilesFromApibara = () => fetch(process.env.APIBARA_ENDPOINT || "/")

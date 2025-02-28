@@ -4,27 +4,38 @@
   "main": "index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
-    "start-indexer": "apibara run script.js -A  dna_xxx",
+    "start-express": "ts-node indexer/express.ts",
+    "start-indexer": "apibara run indexer/index.ts -A  dna_yOJNPT5J6UGb997907vj",
     "build": "tsc",
     "test": "jest"
   },
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "moduleFileExtensions": ["ts", "tsx", "js", "jsx", "json", "node"]
+    "moduleFileExtensions": [
+      "ts",
+      "tsx",
+      "js",
+      "jsx",
+      "json",
+      "node"
+    ]
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@pinata/sdk": "^2.1.0",
+    "crypto": "^1.0.1",
     "dotenv": "^16.4.7",
+    "express": "^4.21.2",
     "fs": "^0.0.1-security",
     "pinata-web3": "^0.5.4",
     "sharp": "^0.33.5",
     "starknet": "^6.23.1"
   },
   "devDependencies": {
+    "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^20.11.24",
     "@types/sharp": "^0.32.0",
