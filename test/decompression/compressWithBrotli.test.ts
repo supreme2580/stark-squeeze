@@ -1,10 +1,5 @@
-import { brotliCompressSync } from "node:zlib";
-import { decompressWithBrotli } from "../../src/decompression/decompressWithBrotli"
-
-// Helper function to compress data for testing
-const compressWithBrotli = (input: string): Buffer => {
-    return brotliCompressSync(Buffer.from(input, "utf-8"));
-};
+import compressWithBrotli from "../../src/compression/compressWithBrotli";
+import { decompressWithBrotli } from "../../src/decompression/decompressWithBrotli";
 
 describe("decompressWithBrotli", () => {
     test("should correctly decompress a valid Brotli-compressed string", () => {
