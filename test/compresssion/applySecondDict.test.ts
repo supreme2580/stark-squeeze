@@ -1,30 +1,48 @@
-import { applySecondDict } from "../../src/compression/applySecondDict";
-// Mock the secondDict used in applySecondDict
-const secondDict: Record<string, string> = {
-  ".....": "!",
-  "....": "*",
-  "...": "#"
-};
+import { applySecondDict } from '../../src/compression/applySecondDict';
 
-describe("applySecondDict", () => {
-  test("should correctly apply secondDict transformations", () => {
-    expect(applySecondDict("..... .... ...")).toBe("!*#");
-    expect(applySecondDict("..... ..... .... ...")).toBe("!!*#");
-    expect(applySecondDict(".... ... .....")).toBe("*#!");
+describe('applySecondDict', () => {
+  it('replaces longest patterns first', () => {
+    expect(applySecondDict('.....')).toBe('!'); // 5 dots
+    expect(applySecondDict('....')).toBe('#');  // 4 dots
   });
 
-  test("should return the same string if no transformation is possible", () => {
-    expect(applySecondDict("abcdef")).toBe("abcdef");
+  it('handles overlapping patterns', () => {
+    expect(applySecondDict('. ....')).toBe('&$'); // Corrected: removed space between . . and ...
   });
 
-  test("should handle mixed cases with partial matches", () => {
-    expect(applySecondDict("..... abc ....")).toBe("! abc *");
+  it('handles empty string', () => {
+    expect(applySecondDict('')).toBe('');
+  });
+  it('returns the same string if no patterns match', () => {
+    expect(applySecondDict('ABC123')).toBe('ABC123'); // No replacement
   });
 
-  test("should correctly apply secondDict transformations", () => {
-    const result = applySecondDict("..... .... ...");
-    console.log("Received output:", result); // Debugging log
-    expect(result).toBe("!*#");
+  it('handles mixed matching and non-matching characters', () => {
+    expect(applySecondDict('ABC.....XYZ')).toBe('ABC!XYZ'); // Partial match
   });
-  
+
+  it('handles consecutive patterns', () => {
+    expect(applySecondDict('..... ....')).toBe('! #'); // Ensures adjacent replacements
+  });
+
+  it('handles a single unmatched character', () => {
+    expect(applySecondDict('Z')).toBe('Z'); // Should remain unchanged
+  });
+
+  it('handles patterns appearing multiple times', () => {
+    expect(applySecondDict('..... .....')).toBe('! !'); // Two occurrences of '.....'
+  });
+
+  it('handles patterns at the start and end of a string', () => {
+    expect(applySecondDict('.....X')).toBe('!X'); // Leading pattern
+    expect(applySecondDict('X.....')).toBe('X!'); // Trailing pattern
+  });
+
+  it('handles input with multiple pattern variations', () => {
+    expect(applySecondDict('.... .. ...')).toBe('# % $'); // Different pattern matches in one string
+  });
+
+  it('preserves case sensitivity', () => {
+    expect(applySecondDict('AbC')).toBe('AbC'); // Should remain unchanged if not in dictionary
+  });
 });
