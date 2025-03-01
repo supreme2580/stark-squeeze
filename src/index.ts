@@ -228,20 +228,35 @@ async function saveCompressedOutput(filePath: string, data: Buffer): Promise<voi
   }
 }
 
-async function compress() {
-  const filePath = 'path/to/your/file.txt';
-  const outputFilePath = 'path/to/output/file.txt';
-
+/**
+ * Compresses a file using a two-level encoding and Brotli compression.
+ *
+ * This function reads a file as binary, applies a first-level encoding
+ * to convert the binary data to a dot representation, applies a second-level
+ * encoding to further encode the data, compresses the encoded data using
+ * Brotli compression, and saves the compressed data to a file.
+ *
+ * @async
+ * @function
+ * @param {{ input_path: string, output_path: string }} param0 - An object containing the input and output file paths.
+ * @param {string} param0.input_path - The path to the input file.
+ * @param {string} param0.output_path - The path to the output file.
+ * @throws {Error} If there's an error in the compression pipeline.
+ *
+ * @example
+ * ```typescript
+ * compress({ input_path: 'path/to/input/file.txt', output_path: 'path/to/output/file.txt' });
+ * ```
+ */
+async function compress({ input_path, output_path }: { input_path: string, output_path: string }) {
   try {
-      const binaryString = await readFileAsBinary(filePath);
+      const binaryString = await readFileAsBinary(input_path);
       const dotsString = binaryToDots(binaryString);
       const encodedString = applySecondDict(dotsString);
       const compressedData = compressWithBrotli(encodedString);
 
-      await saveCompressedOutput(outputFilePath, compressedData);
+      await saveCompressedOutput(output_path, compressedData);
   } catch (error) {
       console.error(`Error in compression pipeline: ${error}`);
   }
 }
-
-compress();
