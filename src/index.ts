@@ -248,7 +248,7 @@ async function saveCompressedOutput(filePath: string, data: Buffer): Promise<voi
  * compress({ input_path: 'path/to/input/file.txt', output_path: 'path/to/output/file.txt' });
  * ```
  */
-async function compress({ input_path, output_path }: { input_path: string, output_path: string }) {
+export async function compress({ input_path, output_path }: { input_path: string, output_path: string }) {
   try {
       const binaryString = await readFileAsBinary(input_path);
       const dotsString = binaryToDots(binaryString);
