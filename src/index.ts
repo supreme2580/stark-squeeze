@@ -1,6 +1,11 @@
 import { GetCIDResponse, PinataSDK, PinResponse } from "pinata-web3";
 import { Account, Contract, RpcProvider } from "starknet";
 import crypto from 'crypto';
+import { binaryToDots } from "./compression/binaryToDots";
+import { applySecondDict } from "./compression";
+import compressWithBrotli from "./compression/compressWithBrotli";
+import { readFileAsBinary } from './io/fileReader';
+import fs from 'fs';
 
 interface UploadOptions {
   file: File | Blob;
@@ -212,3 +217,31 @@ function decryptText(encryptedText: string, key: string): string {
 }
 
 export const getFilesFromApibara = () => fetch(process.env.APIBARA_ENDPOINT || "/")
+
+
+async function saveCompressedOutput(filePath: string, data: Buffer): Promise<void> {
+  try {
+      await fs.promises.writeFile(filePath, data);
+  } catch (error) {
+      console.error(`Error saving file: ${error}`);
+      throw error;
+  }
+}
+
+async function compress() {
+  const filePath = 'path/to/your/file.txt';
+  const outputFilePath = 'path/to/output/file.txt';
+
+  try {
+      const binaryString = await readFileAsBinary(filePath);
+      const dotsString = binaryToDots(binaryString);
+      const encodedString = applySecondDict(dotsString);
+      const compressedData = compressWithBrotli(encodedString);
+
+      await saveCompressedOutput(outputFilePath, compressedData);
+  } catch (error) {
+      console.error(`Error in compression pipeline: ${error}`);
+  }
+}
+
+compress();

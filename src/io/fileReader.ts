@@ -19,7 +19,7 @@ import { promises as fs } from "fs";
  *   .catch(error => console.error(error));
  */
 
-async function readFileAsBinary(filePath: string): Promise<string> {
+export async function readFileAsBinary(filePath: string): Promise<string> {
   try {
     // Read the file as a buffer
     const buffer: Buffer = await fs.readFile(filePath);
@@ -37,16 +37,3 @@ async function readFileAsBinary(filePath: string): Promise<string> {
     throw new Error(`Error reading file: ${errorMessage}`);
   }
 }
-
-// Example usage
-async function main() {
-  try {
-    const filePath = "path/to/your/file.txt"; // Use forward slashes or escape backslashes
-    const binaryString = await readFileAsBinary(filePath);
-    console.log("Binary string:", binaryString);
-  } catch (error) {
-    console.error(error);
-  }
-}
-
-main();
