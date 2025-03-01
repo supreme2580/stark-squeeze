@@ -174,7 +174,7 @@ export async function contract_call(
   const contract = new Contract(abi, contract_address, provider);
   contract.connect(account);
   const cid = uploadFiles(jwt, gateway, filesArray, encrypted);
-  const contract_call = contract.populate('add_data', [cid, encrypted, name, file_type, file_format]);
+  const contract_call = contract.populate('add_data', [cid, name, file_format, encrypted, file_type]);
   const add_data = await contract.add_data(contract_call.calldata);
   const tx = await provider.waitForTransaction(add_data.transaction_hash);
   return tx;
