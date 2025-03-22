@@ -1,4 +1,4 @@
-import { secondDict } from "../constants/dictionaries";
+import { secondDict } from "../../constants/dictionaries";
 
 export function applySecondDict(encodedStr: string): string {
   // Sort keys by descending length to prioritize longer patterns

@@ -1,4 +1,4 @@
-import compressWithBrotli from "../../src/compression/compressWithBrotli";
+import compressWithBrotli from "../../src/compression/v1/compressWithBrotli";
 import { decompressWithBrotli } from "../../src/decompression/decompressWithBrotli";
 
 describe("decompressWithBrotli", () => {

@@ -1,4 +1,4 @@
-import { binaryToDots } from "../../src/compression/binaryToDots";
+import { binaryToDots } from "../../src/compression/v1/binaryToDots";
 import { firstDict } from "../../src/constants/dictionaries";
 
 describe("binaryToDots", () => {
