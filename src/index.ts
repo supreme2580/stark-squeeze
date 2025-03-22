@@ -1,9 +1,9 @@
 import { GetCIDResponse, PinataSDK, PinResponse } from "pinata-web3";
 import { Account, Contract, RpcProvider } from "starknet";
 import crypto from 'crypto';
-import { binaryToDots } from "./compression/binaryToDots";
+import { binaryToDots } from "./compression/v1/binaryToDots";
 import { applySecondDict } from "./compression";
-import compressWithBrotli from "./compression/compressWithBrotli";
+import compressWithBrotli from "./compression/v1/compressWithBrotli";
 import { readFileAsBinary } from './io/fileReader';
 import fs from 'fs';
 

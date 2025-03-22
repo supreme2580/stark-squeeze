@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const applySecondDict_1 = require("../../src/compression/applySecondDict");
+const applySecondDict_1 = require("../../src/compression/v1/applySecondDict");
 describe('applySecondDict', () => {
     it('replaces longest patterns first', () => {
         expect((0, applySecondDict_1.applySecondDict)('.....')).toBe('!'); // 5 dots

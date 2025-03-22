@@ -1,4 +1,4 @@
-import { firstDict } from "../constants/dictionaries";
+import { firstDict } from "../../constants/dictionaries";
 
 /**
  * Converts a binary string to a dot representation string.
