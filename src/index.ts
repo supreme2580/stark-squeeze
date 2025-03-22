@@ -6,6 +6,7 @@ import { applySecondDict } from "./compression";
 import compressWithBrotli from "./compression/compressWithBrotli";
 import { readFileAsBinary } from './io/fileReader';
 import fs from 'fs';
+import * as path from 'path';
 
 interface UploadOptions {
   file: File | Blob;
@@ -259,4 +260,27 @@ export async function compress({ input_path, output_path }: { input_path: string
   } catch (error) {
       console.error(`Error in compression pipeline: ${error}`);
   }
+}
+
+/**
+ * Reads a file and converts its content to a binary string,
+ * then splits the binary string into chunks of five bits.
+ *
+ * @param {string} filePath - The path to the file to be read.
+ * @returns {string[]} An array of binary string chunks, each up to five bits long.
+ */
+export function fileToBinary(filePath: string): string[] {
+    try {
+        const absolutePath = path.resolve(filePath);
+        if (!fs.existsSync(absolutePath)) {
+            throw new Error(`File not found: ${absolutePath}`);
+        }
+        
+        const data = fs.readFileSync(absolutePath);
+        const binaryString = [...data].map(byte => byte.toString(2).padStart(8, '0')).join('');
+        return binaryString.match(/.{1,5}/g) || [];
+    } catch (error) {
+        console.error(`Error reading file: ${error}`);
+        return []
+    }
 }
