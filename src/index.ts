@@ -260,3 +260,38 @@ export async function compress({ input_path, output_path }: { input_path: string
       console.error(`Error in compression pipeline: ${error}`);
   }
 }
+
+/**
+ * Processes binary input and creates a file with the resulting binary data
+ * 
+ * @param input - Either an array of binary strings or a single binary string
+ * @param outputPath - Path where the output file will be saved
+ * @returns Promise that resolves when the file is successfully created
+ * 
+ * @example
+ * ```typescript
+ * // With array input
+ * await binary_to_file(['1101', '11011', '10111'], 'output.bin');
+ * 
+ * // With single string input
+ * await binary_to_file('110111011', 'output.bin');
+ * ```
+ * 
+ * @throws Will throw an error if the file operation fails
+ */
+export async function binary_to_file(
+  input: string[] | string,
+  outputPath: string
+): Promise<void> {
+  try {
+    const binaryString = Array.isArray(input) ? input.join('') : input;
+    const buffer = Buffer.from(
+      binaryString.match(/.{1,8}/g)?.map(byte => parseInt(byte, 2)) || []
+    );
+    await fs.promises.writeFile(outputPath, buffer);
+    console.log(`Binary data successfully written to ${outputPath}`);
+  } catch (error) {
+    console.error(`Error in binary_to_file: ${error}`);
+    throw error;
+  }
+}
