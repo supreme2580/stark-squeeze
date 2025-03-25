@@ -43,10 +43,15 @@ pub const SECOND_DICT: phf::Map<&'static str, char> = phf::phf_map! {
 };
 
 pub fn split_by_5(binary_string: &str) -> String {
-    let chunks: Vec<&str> = binary_string
-        .as_bytes()
+    if !binary_string.chars().all(|c| c == '0' || c == '1') {
+        return serde_json::json!([]).to_string();
+    }
+    let chunks: Vec<String> = binary_string
+        .chars()
+        .collect::<Vec<char>>()
         .chunks(5)
-        .map(|chunk| std::str::from_utf8(chunk).unwrap())
+        .map(|chunk| chunk.iter().collect())
         .collect();
+
     serde_json::json!(chunks).to_string()
 }
