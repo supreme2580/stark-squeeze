@@ -13,31 +13,25 @@ pub fn binary_to_file(input: &(impl AsRef<str> + ?Sized), output_path: Option<&s
         .as_ref()
         .split_whitespace()
         .collect();
-
     if !binary_string.chars().all(|c| c == '0' || c == '1') {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid binary string"));
     }
-
     let file_path = output_path.unwrap_or("output.bin");
-
     let file = File::create(file_path)?;
     let mut writer = BufWriter::new(file);
-
     let original_length = binary_string.len() as u16;
     writer.write_all(&original_length.to_be_bytes())?;
-
     let padded_binary_string = pad_binary_string(&binary_string);
-
-    let mut buffer = [0u8; 1];
+    let mut byte_buffer = Vec::with_capacity(padded_binary_string.len() / 8);
     for chunk in padded_binary_string.as_bytes().chunks(8) {
-        let chunk_str = std::str::from_utf8(chunk).unwrap();
-        let byte = u8::from_str_radix(chunk_str, 2).unwrap_or(0);
-        buffer[0] = byte;
-        writer.write_all(&buffer)?;
+        let chunk_str = std::str::from_utf8(chunk)
+            .expect("Invalid UTF-8 sequence in binary data");
+        let byte = u8::from_str_radix(chunk_str, 2)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid binary chunk"))?;
+        byte_buffer.push(byte);
     }
-
+    writer.write_all(&byte_buffer)?;
     writer.flush()?;
-
     Ok(())
 }
 
@@ -77,13 +71,13 @@ fn main() {
     }
 
     //binary to file with custom path
-    match binary_to_file(&["1101", "0110", "1011"].join(" "), Some("./custom_output.bin")) { // put your own custom path
+    match binary_to_file(&["1101", "0110", "1011"].join(" "), Some("/Users/mac/dev/od12/stark-squeeze/custom_output.bin")) {
         Ok(_) => println!("File created successfully from binary string array"),
         Err(e) => eprintln!("Error creating file: {}", e),
     }
 
     //reading back the binary file
-    match read_binary_file("./custom_output.bin") { // put your own custom path
+    match read_binary_file("/Users/mac/dev/od12/stark-squeeze/custom_output.bin") {
         Ok(restored_binary) => println!("Restored binary string: {}", restored_binary),
         Err(e) => eprintln!("Error reading binary file: {}", e),
     }
