@@ -1,0 +1,19 @@
+# Rust
+**/target/
+**/Cargo.lock
+**/*.rs.bk
+
+# JavaScript/TypeScript
+**/node_modules/
+**/dist/
+**/.env
+**/keystore.json
+**/account.json
+
+# IDE
+**/.vscode/
+**/.idea/
+
+# OS
+**/.DS_Store
+**/Thumbs.db
