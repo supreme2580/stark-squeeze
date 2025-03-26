@@ -42,9 +42,9 @@ export class ProgressBar {
         const emptyBar = '░'.repeat(emptyLength);
         
         const percentage = Math.round(progress * 100);
-        const elapsedTime = (Date.now() - this.startTime) / 1000;
+        const elapsedTime = Math.max((Date.now() - this.startTime) / 1000, 0.001); // Evitar división por cero
         const speed = this.current / elapsedTime;
-        const eta = (this.total - this.current) / speed;
+        const eta = isFinite(speed) && speed > 0 ? (this.total - this.current) / speed : 0;
 
         const progressBar = `\r[${filledBar}${emptyBar}] ${percentage}% | ${this.current}/${this.total} | ${speed.toFixed(2)} it/s | ETA: ${eta.toFixed(1)}s`;
         
