@@ -250,13 +250,43 @@ async function saveCompressedOutput(filePath: string, data: Buffer): Promise<voi
  */
 export async function compress({ input_path, output_path }: { input_path: string, output_path: string }) {
   try {
+      console.log(`\nCompressing file: ${input_path}`);
+      console.log('Reading file...');
       const binaryString = await readFileAsBinary(input_path);
+      
+      console.log('Converting to dot representation...');
       const dotsString = binaryToDots(binaryString);
+      
+      console.log('Applying second layer encoding...');
       const encodedString = applySecondDict(dotsString);
+      
+      console.log('Compressing with Brotli...');
       const compressedData = compressWithBrotli(encodedString);
 
+      console.log('Saving compressed file...');
       await saveCompressedOutput(output_path, compressedData);
+      
+      console.log(`\nCompression completed! File saved at: ${output_path}`);
   } catch (error) {
       console.error(`Error in compression pipeline: ${error}`);
+      process.exit(1);
   }
+}
+
+// If running directly from command line
+if (require.main === module) {
+    const args = process.argv.slice(2);
+    
+    if (args.length !== 2) {
+        console.error('Usage: npm start <input_file> <output_file>');
+        console.error('Example: npm start input.txt output.br');
+        process.exit(1);
+    }
+
+    const [input_path, output_path] = args;
+    compress({ input_path, output_path })
+        .catch(error => {
+            console.error('Error:', error);
+            process.exit(1);
+        });
 }

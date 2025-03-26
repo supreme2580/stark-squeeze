@@ -1,4 +1,5 @@
 import { promises as fs } from "fs";
+import { ProgressBar } from "./progressBar";
 
 /**
  * Reads a file and converts its contents to a binary string.
@@ -23,13 +24,22 @@ export async function readFileAsBinary(filePath: string): Promise<string> {
   try {
     // Read the file as a buffer
     const buffer: Buffer = await fs.readFile(filePath);
-
-    // Convert the buffer to a binary string
-    const binaryString = Array.from(buffer, byte => byte.toString(2).padStart(8, "0")).join("");
+    
+    // Create progress bar
+    const progressBar = new ProgressBar(buffer.length);
+    
+    // Convert the buffer to a binary string with progress updates
+    const binaryString = Array.from(buffer, (byte, index) => {
+      progressBar.update(index + 1);
+      return byte.toString(2).padStart(8, "0");
+    }).join("");
 
     // Pad the binary string to a multiple of 5 bits
     const paddedBinaryString: string = binaryString.padEnd(binaryString.length + (5 - (binaryString.length % 5)) % 5, "0");
-
+    
+    // Finish progress bar
+    progressBar.finish();
+    
     return paddedBinaryString;
   } catch (error) {
     // Handle file reading errors
