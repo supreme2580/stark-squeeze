@@ -9,22 +9,23 @@ pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
 }
 
 pub fn binary_to_file(input: &(impl AsRef<str> + ?Sized)) -> io::Result<()> {
-    
-    let binary_string = if let Some(input_str) = input.as_ref().split_whitespace().next() {
-        input_str.to_string()
-    } else {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "Empty input"));
-    };
+    let binary_string: String = input
+        .as_ref()
+        .split_whitespace()
+        .collect();
 
     if !binary_string.chars().all(|c| c == '0' || c == '1') {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid binary string"));
     }
 
-    let bytes: Vec<u8> = (0..binary_string.len())
-        .step_by(8)
-        .map(|i| {
-            let byte_str = &binary_string[i..std::cmp::min(i + 8, binary_string.len())];
-            u8::from_str_radix(byte_str, 2).unwrap_or(0)
+    let padded_binary_string = pad_binary_string(&binary_string);
+
+    let bytes: Vec<u8> = padded_binary_string
+        .as_bytes()
+        .chunks(8)
+        .map(|chunk| {
+            let chunk_str = std::str::from_utf8(chunk).unwrap();
+            u8::from_str_radix(chunk_str, 2).unwrap_or(0)
         })
         .collect();
 
@@ -32,6 +33,11 @@ pub fn binary_to_file(input: &(impl AsRef<str> + ?Sized)) -> io::Result<()> {
     file.write_all(&bytes)?;
 
     Ok(())
+}
+
+fn pad_binary_string(binary_string: &str) -> String {
+    let padding_needed = (8 - (binary_string.len() % 8)) % 8;
+    format!("{}{}", "0".repeat(padding_needed), binary_string)
 }
 
 fn main() {
