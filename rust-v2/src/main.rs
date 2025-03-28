@@ -21,14 +21,31 @@ pub fn split_by_5(binary_string: &str) -> String {
         return serde_json::json!([]).to_string();
     }
 
+    let total_size = binary_string.len();
+    println!("🚀 Splitting binary string of size {} bits...", total_size);
+
+    let pb = ProgressBar::new(total_size as u64);
+    pb.set_style(
+        ProgressStyle::with_template("🔹 [{bar:40.green/blue}] {percent}% ⏳ {msg}")
+            .unwrap()
+            .progress_chars("█▉▊▋▌▍▎▏ "),
+    );
+
     let chunks: Vec<String> = binary_string
         .as_bytes()
         .chunks(5)
-        .map(|chunk| String::from_utf8_lossy(chunk).to_string())
+        .enumerate()
+        .map(|(i, chunk)| {
+            pb.inc(chunk.len() as u64);
+            pb.set_message(format!("Processing chunk {}/{}", i + 1, (total_size + 4) / 5));
+            String::from_utf8_lossy(chunk).to_string()
+        })
         .collect();
 
+    pb.finish_with_message("✅ Splitting Complete! 🎉");
     serde_json::json!(chunks).to_string()
 }
+
 
 pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     let total_size = input.len();
