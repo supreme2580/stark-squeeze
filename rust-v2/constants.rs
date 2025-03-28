@@ -41,25 +41,3 @@ pub const SECOND_DICT: phf::Map<&'static str, char> = phf::phf_map! {
     ". ." => '&',
     "." => '*'
 };
-
-pub fn split_by_5(binary_string: &str) -> String {
-    // Handle the edge case of an empty string
-    if binary_string.is_empty() {
-        return serde_json::json!([]).to_string();
-    }
-
-    // Validate input: ensure it only contains '0' and '1'
-    if !binary_string.chars().all(|c| c == '0' || c == '1') {
-        return serde_json::json!([]).to_string(); // Return an empty JSON array for invalid input
-    }
-
-    // Split the string into chunks of 5 characters using as_bytes for efficiency
-    let chunks: Vec<String> = binary_string
-        .as_bytes()
-        .chunks(5)
-        .map(|chunk| String::from_utf8_lossy(chunk).to_string())
-        .collect();
-
-    // Convert the chunks into a JSON array
-    serde_json::json!(chunks).to_string()
-}
