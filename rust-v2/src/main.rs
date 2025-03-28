@@ -12,36 +12,36 @@ pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     Ok(buffer)
 }
 
-pub fn binary_to_file(binary_data: &[u8], output_path: &str) -> io::Result<()> {
-    let total_size = binary_data.len();
-    println!("🚀 Writing {} bytes to {}...", total_size, output_path);
+// pub fn binary_to_file(binary_data: &[u8], output_path: &str) -> io::Result<()> {
+//     let total_size = binary_data.len();
+//     println!("🚀 Writing {} bytes to {}...", total_size, output_path);
 
-    let file = File::create(output_path)?;
-    let mut writer = BufWriter::new(file);
+//     let file = File::create(output_path)?;
+//     let mut writer = BufWriter::new(file);
 
-    let pb = ProgressBar::new(total_size as u64);
-    pb.set_style(
-        ProgressStyle::with_template("📂 [{bar:40.green/yellow}] {percent}% 🚀 {msg}")
-            .unwrap()
-            .progress_chars("█▉▊▋▌▍▎▏ "),
-    );
+//     let pb = ProgressBar::new(total_size as u64);
+//     pb.set_style(
+//         ProgressStyle::with_template("📂 [{bar:40.green/yellow}] {percent}% 🚀 {msg}")
+//             .unwrap()
+//             .progress_chars("█▉▊▋▌▍▎▏ "),
+//     );
 
-    for (i, chunk) in binary_data.chunks(5).enumerate() {
-        writer.write_all(chunk)?;
-        pb.inc(chunk.len() as u64);
-        pb.set_message(format!("Writing chunk {}/{}", i + 1, (total_size + 4) / 5));
+//     for (i, chunk) in binary_data.chunks(5).enumerate() {
+//         writer.write_all(chunk)?;
+//         pb.inc(chunk.len() as u64);
+//         pb.set_message(format!("Writing chunk {}/{}", i + 1, (total_size + 4) / 5));
 
-        // Adaptive delay for better visual feedback
-        if total_size < 500 {
-            sleep(Duration::from_millis(50));
-        }
-    }
+//         // Adaptive delay for better visual feedback
+//         if total_size < 500 {
+//             sleep(Duration::from_millis(50));
+//         }
+//     }
 
-    writer.flush()?;
-    pb.finish_with_message("✅ File Writing Complete! 🎉");
-    println!("📁 File successfully saved to {}", output_path);
-    Ok(())
-}
+//     writer.flush()?;
+//     pb.finish_with_message("✅ File Writing Complete! 🎉");
+//     println!("📁 File successfully saved to {}", output_path);
+//     Ok(())
+// }
 
 pub fn split_by_5(binary_string: &str) -> String {
     if binary_string.is_empty() {
