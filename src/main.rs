@@ -4,7 +4,37 @@ use std::thread::sleep;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json;
+use std::collections::HashMap;
+use std::io::{self, Error, ErrorKind};
 
+pub fn decoding_two(encoded_str: &str) -> Result<String, io::Error> {
+    let reverse_map: HashMap<&str, &str> = HashMap::from([
+        ("!", "a"),
+        ("#", "b"),
+        ("$", "c"),
+        ("%", "d"),
+        ("&", "e"),
+        ("*", "f"),
+        // add more mappings as needed
+    ]);
+
+    let mut result = String::new();
+
+    for symbol in encoded_str.chars() {
+        let symbol_str = symbol.to_string();
+        match reverse_map.get(symbol_str.as_str()) {
+            Some(decoded) => {
+                if !result.is_empty() {
+                    result.push('.');
+                }
+                result.push_str(decoded);
+            }
+            None => return Err(Error::new(ErrorKind::InvalidInput, format!("Invalid symbol: {}", symbol))),
+        }
+    }
+
+    Ok(result)
+}
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     let mut file = File::open(file_path)?;
