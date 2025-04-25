@@ -4,6 +4,7 @@ use std::thread::sleep;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json;
+use crate::dictionary::decoding_one;
 
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
@@ -140,4 +141,10 @@ fn main() {
         }
         Err(e) => eprintln!("Error reading file: {}", e),
     }
+}
+
+let dot_string = ". . .";
+match decoding_one(dot_string) {
+    Ok(binary) => println!("Decoded binary: {}", binary),
+    Err(e) => eprintln!("Error decoding dot string: {}", e),
 }
