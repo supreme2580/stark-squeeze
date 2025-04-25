@@ -3,9 +3,9 @@ use std::io::{self, Read, Write, BufWriter};
 use std::thread::sleep;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::HashMap;
 use serde_json;
 
-// Import the dictionary module
 mod dictionary;
 use dictionary::FIRST_DICT;
 
@@ -130,30 +130,49 @@ pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-/// Converts a binary string into a dot-separated encoded string using FIRST_DICT.
-/// 
-/// This function takes a binary string (containing only 0s and 1s) and converts it
-/// into a dot-encoded string representation using the mapping defined in FIRST_DICT.
-/// The binary input is padded to ensure it's divisible by 5, then each 5-bit chunk
-/// is mapped to its corresponding dot string representation.
-///
-/// # Arguments
-///
-/// * `binary_string` - A string slice containing only the characters '0' and '1'
-///
-/// # Returns
-///
-/// * `Ok(String)` - A dot-encoded string representation of the binary input
-/// * `Err(io::Error)` - An error if the input contains invalid characters or a chunk 
-///    is not found in the dictionary
-///
-/// # Examples
-///
-/// ```
-/// let binary = "0001000010";  // "00010" + "00010"
-/// let encoded = encoding_one(binary).unwrap();
-/// assert_eq!(encoded, "..");  // "." + "."
-/// ```
+pub fn decoding_one(encoded_str: &str) -> Result<String, io::Error> {
+    if encoded_str.is_empty() {
+        return Ok(String::new());
+    }
+
+    // Reverse the dictionary
+    let mut reverse_dict: HashMap<&str, &str> = HashMap::new();
+    for (bin, sym) in FIRST_DICT.entries() {
+        if !sym.is_empty() {
+            reverse_dict.insert(*sym, *bin);
+        }
+    }
+
+    let mut binary_string = String::new();
+    let mut temp = String::new();
+
+    let mut chars = encoded_str.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        temp.push(c);
+
+        // Try to match a known dot symbol
+        if reverse_dict.contains_key(temp.as_str()) {
+            binary_string.push_str(reverse_dict.get(temp.as_str()).unwrap());
+            temp.clear();
+        } else if chars.peek().is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Invalid or incomplete symbol sequence: '{}'", temp),
+            ));
+        }
+    }
+
+    if !temp.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Unmatched symbol at the end: '{}'", temp),
+        ));
+    }
+
+    Ok(binary_string)
+}
+
 pub fn encoding_one(binary_string: &str) -> io::Result<String> {
     // Handle empty string case
     if binary_string.is_empty() {
