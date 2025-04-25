@@ -3,38 +3,12 @@ use std::io::{self, Read, Write, BufWriter};
 use std::thread::sleep;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
-use serde_json;
 use std::collections::HashMap;
-use std::io::{self, Error, ErrorKind};
+use serde_json;
 
-pub fn decoding_two(encoded_str: &str) -> Result<String, io::Error> {
-    let reverse_map: HashMap<&str, &str> = HashMap::from([
-        ("!", "a"),
-        ("#", "b"),
-        ("$", "c"),
-        ("%", "d"),
-        ("&", "e"),
-        ("*", "f"),
-        // add more mappings as needed
-    ]);
-
-    let mut result = String::new();
-
-    for symbol in encoded_str.chars() {
-        let symbol_str = symbol.to_string();
-        match reverse_map.get(symbol_str.as_str()) {
-            Some(decoded) => {
-                if !result.is_empty() {
-                    result.push('.');
-                }
-                result.push_str(decoded);
-            }
-            None => return Err(Error::new(ErrorKind::InvalidInput, format!("Invalid symbol: {}", symbol))),
-        }
-    }
-
-    Ok(result)
-}
+// Import the dictionary module
+mod dictionary;
+use dictionary::FIRST_DICT;
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     let mut file = File::open(file_path)?;
@@ -157,7 +131,130 @@ pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     Ok(())
 }
 
+/// Converts a binary string into a dot-separated encoded string using FIRST_DICT.
+/// 
+/// This function takes a binary string (containing only 0s and 1s) and converts it
+/// into a dot-encoded string representation using the mapping defined in FIRST_DICT.
+/// The binary input is padded to ensure it's divisible by 5, then each 5-bit chunk
+/// is mapped to its corresponding dot string representation.
+///
+/// # Arguments
+///
+/// * `binary_string` - A string slice containing only the characters '0' and '1'
+///
+/// # Returns
+///
+/// * `Ok(String)` - A dot-encoded string representation of the binary input
+/// * `Err(io::Error)` - An error if the input contains invalid characters or a chunk 
+///    is not found in the dictionary
+///
+/// # Examples
+///
+/// ```
+/// let binary = "0001000010";  // "00010" + "00010"
+/// let encoded = encoding_one(binary).unwrap();
+/// assert_eq!(encoded, "..");  // "." + "."
+/// ```
+pub fn encoding_one(binary_string: &str) -> io::Result<String> {
+    // Handle empty string case
+    if binary_string.is_empty() {
+        return Ok(String::new());
+    }
+
+    // Validate input - ensure only 0s and 1s
+    if !binary_string.chars().all(|c| c == '0' || c == '1') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput, 
+            "Invalid binary string: must contain only 0 and 1"
+        ));
+    }
+
+    // Pad the binary string so it's divisible by 5
+    let padded_binary_string = pad_binary_string(binary_string);
+    
+    // Process the padded string in 5-bit chunks
+    let mut chunks = Vec::new();
+    for i in (0..padded_binary_string.len()).step_by(5) {
+        if i + 5 <= padded_binary_string.len() {
+            chunks.push(&padded_binary_string[i..i+5]);
+        }
+    }
+    
+    // Map each chunk to its dot string representation
+    let mut result = Vec::with_capacity(chunks.len());
+    
+    for chunk in &chunks {
+        match FIRST_DICT.get(*chunk) {
+            Some(dot_string) => {
+                // Only add non-empty dot strings to the result
+                if !dot_string.is_empty() {
+                    result.push(*dot_string);
+                }
+            },
+            None => return Err(io::Error::new(
+                io::ErrorKind::InvalidData, 
+                format!("Chunk {} not found in dictionary", chunk)
+            )),
+        }
+    }
+    
+    // Concatenate the dot strings (no separator needed)
+    Ok(result.concat())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encoding_one() {
+        // Test with "00010" (.) + "00010" (.)
+        let binary = "0001000010";
+        let result = encoding_one(binary).unwrap();
+        assert_eq!(result, "..");
+        
+        // Test with "00111" (...) + "01110" (...)
+        let binary2 = "0011101110";
+        let result2 = encoding_one(binary2).unwrap();
+        assert_eq!(result2, "......");  // "..." + "..."
+        
+        // Test with a longer binary string
+        // "10101" (". . .") + "11111" (".....")
+        let binary3 = "1010111111";
+        let result3 = encoding_one(binary3).unwrap();
+        assert_eq!(result3, ". . ......");
+        
+        // Test with empty string
+        let result4 = encoding_one("").unwrap();
+        assert_eq!(result4, "");
+        
+        // Test with invalid characters
+        let invalid_binary = "001201";
+        let result5 = encoding_one(invalid_binary);
+        assert!(result5.is_err());
+        
+        // Test with binary that maps to empty string in FIRST_DICT
+        let binary6 = "00000";
+        let result6 = encoding_one(binary6).unwrap();
+        assert_eq!(result6, "");
+        
+        // Test with a mix of emptry string mappings and non-empty
+        // "00000" ("") + "00001" (".")
+        let binary7 = "0000000001";
+        let result7 = encoding_one(binary7).unwrap();
+        assert_eq!(result7, ".");
+    }
+}
+
 fn main() {
+    // Example usage of encoding_one
+    let binary_string = "0011101110";
+    match encoding_one(binary_string) {
+        Ok(encoded) => println!("Binary: {} -> Encoded: {}", binary_string, encoded),
+        Err(e) => eprintln!("Error encoding binary string: {}", e),
+    }
+    
+    // Original file processing code
     let file_path = "cat.mp4";
     let output_path = "output.bin";
 
