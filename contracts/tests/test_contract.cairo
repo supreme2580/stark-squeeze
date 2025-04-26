@@ -6,6 +6,7 @@ use contracts::IHelloStarknetSafeDispatcher;
 use contracts::IHelloStarknetSafeDispatcherTrait;
 use contracts::IHelloStarknetDispatcher;
 use contracts::IHelloStarknetDispatcherTrait;
+use core::byte_array::ByteArray;
 
 fn deploy_contract(name: ByteArray) -> ContractAddress {
     let contract = declare(name).unwrap().contract_class();
@@ -44,4 +45,21 @@ fn test_cannot_increase_balance_with_zero_value() {
             assert(*panic_data.at(0) == 'Amount cannot be 0', *panic_data.at(0));
         }
     };
+}
+
+#[test]
+fn test_process_file_metadata() {
+    let contract_address = deploy_contract("HelloStarknet");
+    let dispatcher = IHelloStarknetDispatcher { contract_address };
+    
+    // Create test data parameters
+    let data_size = 16; // Simulating size of binary data
+    let file_type = 'txt';
+    let original_size = 100; // Simulating original uncompressed size
+    
+    // Call process_file_metadata - should run without errors
+    dispatcher.process_file_metadata(data_size, file_type, original_size);
+    
+    // If we reached here without errors, the test passed
+    assert(true, 'Test passed');
 }

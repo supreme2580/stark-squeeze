@@ -1,11 +1,13 @@
 use std::fs::File;
 use std::io::{self, Read, Write, BufWriter};
-use std::collections::HashMap;
 use std::thread::sleep;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::HashMap;
 use serde_json;
 
+mod dictionary;
+use dictionary::FIRST_DICT;
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     let mut file = File::open(file_path)?;
@@ -148,63 +150,160 @@ pub fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
     .cloned()
     .collect();
 
-    let tokens: Vec<&str> = dot_string
-    .split('.')
-    .filter(|token| !token.trim().is_empty())
-    .collect();
-
     if dot_string.trim().is_empty() {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "Input dot string is empty"));
     }
 
-    let tokens: Vec<&str> = dot_string
-        .split('.')
-        .filter(|token| !token.trim().is_empty())
-        .collect();
-
-    let mut binary_string = String::new();
-    for token in tokens {
-        match first_dict.get(token) {
-            Some(&binary_chunk) => binary_string.push_str(binary_chunk),
-            None => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("Unknown token: {}", token),
-                ));
-            }
-        }
+    // Process the input as a whole and match it against the dictionary
+    match first_dict.get(dot_string) {
+        Some(&binary_string) => Ok(binary_string.to_string()),
+        None => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Unknown token: {}", dot_string),
+        )),
     }
-
-    Ok(binary_string)
 }
 
 fn decode_dot_string(dot_string: &str) {
     match decoding_one(dot_string) {
         Ok(binary) => println!("Decoded binary: {}", binary),
         Err(e) => eprintln!("Error decoding dot string: {}", e),
+    }       
+    
+}    
+
+pub fn decoding_two(encoded_str: &str) -> Result<String, io::Error> {
+    if encoded_str.is_empty() {
+        return Ok(String::new());
     }
+
+    // Reverse the dictionary
+    let mut reverse_dict: HashMap<&str, &str> = HashMap::new();
+    for (bin, sym) in FIRST_DICT.entries() {
+        if !sym.is_empty() {
+            reverse_dict.insert(*sym, *bin);
+        }
+    }
+
+    let mut binary_string = String::new();
+    let mut temp = String::new();
+
+    let mut chars = encoded_str.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        temp.push(c);
+
+        // Try to match a known dot symbol
+        if reverse_dict.contains_key(temp.as_str()) {
+            binary_string.push_str(reverse_dict.get(temp.as_str()).unwrap());
+            temp.clear();
+        } else if chars.peek().is_none() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Invalid or incomplete symbol sequence: '{}'", temp),
+            ));
+        }
+    }
+
+    if !temp.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Unmatched symbol at the end: '{}'", temp),
+        ));
+    }
+
+    Ok(binary_string)
 }
 
-fn main() {
-    let file_path = "cat.mp4";
-    let output_path = "output.bin";
-
-    match file_to_binary(file_path) {
-        Ok(binary_data) => {
-            println!("Binary content loaded. Processing...");
-            if let Err(e) = join_by_5(&binary_data, output_path) {
-                eprintln!("Error processing file: {}", e);
-            }
-        }
-        Err(e) => eprintln!("Error reading file: {}", e),
+pub fn encoding_one(binary_string: &str) -> io::Result<String> {
+    // Handle empty string case
+    if binary_string.is_empty() {
+        return Ok(String::new());
     }
 
-    decode_dot_string(". . .");
+    // Validate input - ensure only 0s and 1s
+    if !binary_string.chars().all(|c| c == '0' || c == '1') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput, 
+            "Invalid binary string: must contain only 0 and 1"
+        ));
+    }
+
+    // Pad the binary string so it's divisible by 5
+    let padded_binary_string = pad_binary_string(binary_string);
+    
+    // Process the padded string in 5-bit chunks
+    let mut chunks = Vec::new();
+    for i in (0..padded_binary_string.len()).step_by(5) {
+        if i + 5 <= padded_binary_string.len() {
+            chunks.push(&padded_binary_string[i..i+5]);
+        }
+    }
+    
+    // Map each chunk to its dot string representation
+    let mut result = Vec::with_capacity(chunks.len());
+    
+    for chunk in &chunks {
+        match FIRST_DICT.get(*chunk) {
+            Some(dot_string) => {
+                // Only add non-empty dot strings to the result
+                if !dot_string.is_empty() {
+                    result.push(*dot_string);
+                }
+            },
+            None => return Err(io::Error::new(
+                io::ErrorKind::InvalidData, 
+                format!("Chunk {} not found in dictionary", chunk)
+            )),
+        }
+    }
+    
+    // Concatenate the dot strings (no separator needed)
+    Ok(result.concat())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_encoding_one() {
+        // Test with "00010" (.) + "00010" (.)
+        let binary = "0001000010";
+        let result = encoding_one(binary).unwrap();
+        assert_eq!(result, "..");
+        
+        // Test with "00111" (...) + "01110" (...)
+        let binary2 = "0011101110";
+        let result2 = encoding_one(binary2).unwrap();
+        assert_eq!(result2, "......");  // "..." + "..."
+        
+        // Test with a longer binary string
+        // "10101" (". . .") + "11111" (".....")
+        let binary3 = "1010111111";
+        let result3 = encoding_one(binary3).unwrap();
+        assert_eq!(result3, ". . ......");
+        
+        // Test with empty string
+        let result4 = encoding_one("").unwrap();
+        assert_eq!(result4, "");
+        
+        // Test with invalid characters
+        let invalid_binary = "001201";
+        let result5 = encoding_one(invalid_binary);
+        assert!(result5.is_err());
+        
+        // Test with binary that maps to empty string in FIRST_DICT
+        let binary6 = "00000";
+        let result6 = encoding_one(binary6).unwrap();
+        assert_eq!(result6, "");
+        
+        // Test with a mix of emptry string mappings and non-empty
+        // "00000" ("") + "00001" (".")
+        let binary7 = "0000000001";
+        let result7 = encoding_one(binary7).unwrap();
+        assert_eq!(result7, ".");
+    }
 
     #[test]
     fn test_decoding_one_valid() {
@@ -223,4 +322,29 @@ mod tests {
         let result = decoding_one("");
         assert!(result.is_err());
     }
+}
+
+fn main() {
+    // Example usage of encoding_one
+    let binary_string = "0011101110";
+    match encoding_one(binary_string) {
+        Ok(encoded) => println!("Binary: {} -> Encoded: {}", binary_string, encoded),
+        Err(e) => eprintln!("Error encoding binary string: {}", e),
+    }
+    
+    // Original file processing code
+    let file_path = "cat.mp4";
+    let output_path = "output.bin";
+
+    match file_to_binary(file_path) {
+        Ok(binary_data) => {
+            println!("Binary content loaded. Processing...");
+            if let Err(e) = join_by_5(&binary_data, output_path) {
+                eprintln!("Error processing file: {}", e);
+            }
+        }
+        Err(e) => eprintln!("Error reading file: {}", e),
+    }
+
+    decode_dot_string(". . .");
 }
