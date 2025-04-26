@@ -30,7 +30,7 @@ pub const FIRST_DICT: phf::Map<&'static str, &'static str> = phf::phf_map! {
     "11100" => "...",
     "11101" => "... .",
     "11110" => "....",
-    "11111" => "....."
+    "11111" => ".....",
 };
 
 pub const SECOND_DICT: phf::Map<&'static str, char> = phf::phf_map! {

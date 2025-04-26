@@ -130,7 +130,49 @@ pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-pub fn decoding_one(encoded_str: &str) -> Result<String, io::Error> {
+pub fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
+    let first_dict: HashMap<&str, &str> = [
+        ("", "00000"),
+        (".", "00001"),
+        (". .", "10001"),
+        (". ..", "10011"),
+        (". . .", "10101"),
+        (". ...", "10111"),
+        ("..", "11000"),
+        (".. .", "11001"),
+        (".. ..", "11011"),
+        ("...", "11100"),
+        ("... .", "11101"),
+        ("....", "11110"),
+        (".....", "11111"),
+    ]
+    .iter()
+    .cloned()
+    .collect();
+
+    if dot_string.trim().is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "Input dot string is empty"));
+    }
+
+    // Process the input as a whole and match it against the dictionary
+    match first_dict.get(dot_string) {
+        Some(&binary_string) => Ok(binary_string.to_string()),
+        None => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Unknown token: {}", dot_string),
+        )),
+    }
+}
+
+fn decode_dot_string(dot_string: &str) {
+    match decoding_one(dot_string) {
+        Ok(binary) => println!("Decoded binary: {}", binary),
+        Err(e) => eprintln!("Error decoding dot string: {}", e),
+    }       
+    
+}    
+
+pub fn decoding_two(encoded_str: &str) -> Result<String, io::Error> {
     if encoded_str.is_empty() {
         return Ok(String::new());
     }
@@ -262,6 +304,24 @@ mod tests {
         let result7 = encoding_one(binary7).unwrap();
         assert_eq!(result7, ".");
     }
+
+    #[test]
+    fn test_decoding_one_valid() {
+        let result = decoding_one(". .").unwrap();
+        assert_eq!(result, "10001");
+    }
+
+    #[test]
+    fn test_decoding_one_invalid_token() {
+        let result = decoding_one("invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decoding_one_empty_input() {
+        let result = decoding_one("");
+        assert!(result.is_err());
+    }
 }
 
 fn main() {
@@ -285,4 +345,6 @@ fn main() {
         }
         Err(e) => eprintln!("Error reading file: {}", e),
     }
+
+    decode_dot_string(". . .");
 }
