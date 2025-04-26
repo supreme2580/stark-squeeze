@@ -1,10 +1,10 @@
 use std::fs::File;
 use std::io::{self, Read, Write, BufWriter};
+use std::collections::HashMap;
 use std::thread::sleep;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json;
-use crate::dictionary::decoding_one;
 
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
@@ -128,6 +128,63 @@ pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     Ok(())
 }
 
+pub fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
+    let first_dict: HashMap<&str, &str> = [
+        ("", "00000"),
+        (".", "00001"),
+        (". .", "10001"),
+        (". ..", "10011"),
+        (". . .", "10101"),
+        (". ...", "10111"),
+        ("..", "11000"),
+        (".. .", "11001"),
+        (".. ..", "11011"),
+        ("...", "11100"),
+        ("... .", "11101"),
+        ("....", "11110"),
+        (".....", "11111"),
+    ]
+    .iter()
+    .cloned()
+    .collect();
+
+    let tokens: Vec<&str> = dot_string
+    .split('.')
+    .filter(|token| !token.trim().is_empty())
+    .collect();
+
+    if dot_string.trim().is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "Input dot string is empty"));
+    }
+
+    let tokens: Vec<&str> = dot_string
+        .split('.')
+        .filter(|token| !token.trim().is_empty())
+        .collect();
+
+    let mut binary_string = String::new();
+    for token in tokens {
+        match first_dict.get(token) {
+            Some(&binary_chunk) => binary_string.push_str(binary_chunk),
+            None => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!("Unknown token: {}", token),
+                ));
+            }
+        }
+    }
+
+    Ok(binary_string)
+}
+
+fn decode_dot_string(dot_string: &str) {
+    match decoding_one(dot_string) {
+        Ok(binary) => println!("Decoded binary: {}", binary),
+        Err(e) => eprintln!("Error decoding dot string: {}", e),
+    }
+}
+
 fn main() {
     let file_path = "cat.mp4";
     let output_path = "output.bin";
@@ -141,10 +198,29 @@ fn main() {
         }
         Err(e) => eprintln!("Error reading file: {}", e),
     }
+
+    decode_dot_string(". . .");
 }
 
-let dot_string = ". . .";
-match decoding_one(dot_string) {
-    Ok(binary) => println!("Decoded binary: {}", binary),
-    Err(e) => eprintln!("Error decoding dot string: {}", e),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decoding_one_valid() {
+        let result = decoding_one(". .").unwrap();
+        assert_eq!(result, "10001");
+    }
+
+    #[test]
+    fn test_decoding_one_invalid_token() {
+        let result = decoding_one("invalid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_decoding_one_empty_input() {
+        let result = decoding_one("");
+        assert!(result.is_err());
+    }
 }
