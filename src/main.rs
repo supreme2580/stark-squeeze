@@ -164,49 +164,6 @@ pub fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
     Ok(reconstructed_binary)
 }
 
-pub fn decoding_one(encoded_str: &str) -> Result<String, io::Error> {
-    if encoded_str.is_empty() {
-        return Ok(String::new());
-    }
-
-    // Reverse the dictionary
-    let mut reverse_dict: HashMap<&str, &str> = HashMap::new();
-    for (bin, sym) in FIRST_DICT.entries() {
-        if !sym.is_empty() {
-            reverse_dict.insert(*sym, *bin);
-        }
-    }
-
-    let mut binary_string = String::new();
-    let mut temp = String::new();
-
-    let mut chars = encoded_str.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        temp.push(c);
-
-        // Try to match a known dot symbol
-        if reverse_dict.contains_key(temp.as_str()) {
-            binary_string.push_str(reverse_dict.get(temp.as_str()).unwrap());
-            temp.clear();
-        } else if chars.peek().is_none() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("Invalid or incomplete symbol sequence: '{}'", temp),
-            ));
-        }
-    }
-
-    if !temp.is_empty() {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("Unmatched symbol at the end: '{}'", temp),
-        ));
-    }
-
-    Ok(binary_string)
-}
-
 pub fn encoding_one(binary_string: &str) -> io::Result<String> {
     // Handle empty string case
     if binary_string.is_empty() {
