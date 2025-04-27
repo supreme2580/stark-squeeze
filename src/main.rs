@@ -45,6 +45,11 @@ fn pad_binary_string(binary_string: &str) -> String {
     format!("{}{}", binary_string, "0".repeat(padding_needed))
 }
 
+/// Removes padding from a binary string based on the original length.
+fn unpad_binary_string(padded: &str, original_length: usize) -> String {
+    padded.chars().take(original_length).collect()
+}
+
 fn read_binary_file(file_path: &str) -> io::Result<String> {
     let mut file = File::open(file_path)?;
     let mut length_bytes = [0u8; 2];
@@ -58,8 +63,9 @@ fn read_binary_file(file_path: &str) -> io::Result<String> {
         let byte_binary = format!("{:08b}", byte_buffer[0]);
         binary_string.push_str(&byte_binary);
     }
-    binary_string.truncate(original_length);
-    Ok(binary_string)
+
+    // Use unpad_binary_string instead of manual truncation
+    Ok(unpad_binary_string(&binary_string, original_length))
 }
 
 pub fn split_by_5(binary_string: &str) -> String {
@@ -141,3 +147,4 @@ fn main() {
         Err(e) => eprintln!("Error reading file: {}", e),
     }
 }
+
