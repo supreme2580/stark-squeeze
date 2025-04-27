@@ -130,6 +130,40 @@ pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     Ok(())
 }
 
+pub fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
+    // Handle empty input
+    if dot_string.is_empty() {
+        return Ok(String::new());
+    }
+    
+    // Reverse the FIRST_DICT for lookup: dot_string -> 5-bit binary
+    let mut reverse_dict: HashMap<&str, &str> = HashMap::new();
+    for (bin, dot) in FIRST_DICT.entries() {
+        if !dot.is_empty() {
+        reverse_dict.insert(*dot, *bin);
+        }
+    }
+    
+    // Parse the dot_string into tokens
+    let tokens: Vec<&str> = dot_string.split('.').filter(|t| !t.is_empty()).collect();
+    
+    let mut reconstructed_binary = String::new();
+    
+    for token in tokens {
+        match reverse_dict.get(token) {
+            Some(binary_chunk) => reconstructed_binary.push_str(binary_chunk),
+            None => {
+                return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Unknown token '{}' found during decoding", token),
+                ))
+            }
+        }
+    }
+    
+    Ok(reconstructed_binary)
+}
+
 pub fn decoding_one(encoded_str: &str) -> Result<String, io::Error> {
     if encoded_str.is_empty() {
         return Ok(String::new());
