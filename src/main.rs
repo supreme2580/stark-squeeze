@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use serde_json;
 
 mod dictionary;
-use dictionary::FIRST_DICT;
+use dictionary::{FIRST_DICT, SECOND_DICT};
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     let mut file = File::open(file_path)?;
@@ -211,6 +211,55 @@ pub fn encoding_one(binary_string: &str) -> io::Result<String> {
     Ok(result.concat())
 }
 
+pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
+    if dot_string.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut result = String::new();
+    
+    let mut pos = 0;
+    
+    while pos < dot_string.len() {
+        if dot_string[pos..].starts_with(' ') {
+            pos += 1;
+            continue;
+        }
+        let mut matched = false;
+        
+        // Candidate patterns from longest to shortest
+        let candidates = [".....", "....", "...", "..", ". .", "."];
+        
+        for &pattern in &candidates {
+            if pos + pattern.len() <= dot_string.len() && 
+               &dot_string[pos..pos+pattern.len()] == pattern {
+                
+                if let Some(&symbol) = SECOND_DICT.get(pattern) {
+                    result.push(symbol);
+                    pos += pattern.len();
+                    matched = true;
+                    break;
+                }
+            }
+        }
+        
+        if !matched {
+            let problematic_part = if pos + 10 <= dot_string.len() {
+                &dot_string[pos..pos+10]
+            } else {
+                &dot_string[pos..]
+            };
+            
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Invalid or unknown dot pattern at position {}: '{}'", pos, problematic_part)
+            ));
+        }
+    }
+    
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,6 +301,47 @@ mod tests {
         let binary7 = "0000000001";
         let result7 = encoding_one(binary7).unwrap();
         assert_eq!(result7, ".");
+    }
+    
+    #[test]
+    fn test_encoding_two() {
+        // Test with various patterns
+        assert_eq!(encoding_two(".").unwrap(), "*");
+        assert_eq!(encoding_two("..").unwrap(), "%");
+        assert_eq!(encoding_two("...").unwrap(), "$");
+        assert_eq!(encoding_two("....").unwrap(), "#");
+        assert_eq!(encoding_two(".....").unwrap(), "!");
+        assert_eq!(encoding_two(". .").unwrap(), "&");
+        
+        // Test with combinations
+        assert_eq!(encoding_two(".. ...").unwrap(), "%$");
+        assert_eq!(encoding_two(". . .").unwrap(), "&*");
+        assert_eq!(encoding_two("...........").unwrap(), "!!*");
+        
+        // Tests with explicit spaces
+        assert_eq!(encoding_two("... ...").unwrap(), "$$");
+        assert_eq!(encoding_two(". . . . .").unwrap(), "&&*");
+        assert_eq!(encoding_two(".. .. ..").unwrap(), "%%%");
+        
+        // Test with a mix of patterns and spaces
+        let mixed = "...... . .....";
+        assert_eq!(encoding_two(mixed).unwrap(), "!&!");
+        
+        // Test with leading and trailing spaces
+        assert_eq!(encoding_two(" .").unwrap(), "*");
+        assert_eq!(encoding_two(". ").unwrap(), "*");
+        assert_eq!(encoding_two(" . ").unwrap(), "*");
+        
+        // Test with multiple consecutive spaces
+        assert_eq!(encoding_two(".  .").unwrap(), "**");
+        assert_eq!(encoding_two(".   .").unwrap(), "**");
+        
+        // Test with empty string
+        assert_eq!(encoding_two("").unwrap(), "");
+        
+        // Test error case with invalid pattern
+        assert!(encoding_two("...x").is_err());
+        assert!(encoding_two("abc").is_err());
     }
 }
 
