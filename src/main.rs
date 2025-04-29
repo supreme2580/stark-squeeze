@@ -27,22 +27,44 @@ pub fn binary_to_file(input: &(impl AsRef<str> + ?Sized), output_path: Option<&s
     if !binary_string.chars().all(|c| c == '0' || c == '1') {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid binary string"));
     }
+    
     let file_path = output_path.unwrap_or("output.bin");
     let file = File::create(file_path)?;
     let mut writer = BufWriter::new(file);
+    
     let original_length = binary_string.len() as u16;
     writer.write_all(&original_length.to_be_bytes())?;
+    
     let padded_binary_string = pad_binary_string(&binary_string);
-    let mut byte_buffer = Vec::with_capacity(padded_binary_string.len() / 8);
-    for chunk in padded_binary_string.as_bytes().chunks(8) {
+    let total_chunks = padded_binary_string.len() / 8;
+    
+    println!("🚀 Converting binary string of size {} bits to file...", binary_string.len());
+    
+    let pb = ProgressBar::new(total_chunks as u64);
+    pb.set_style(
+        ProgressStyle::with_template("🔸 [{bar:40.green/blue}] {percent}% ⏳ {msg}")
+            .unwrap()
+            .progress_chars("█▉▊▋▌▍▎▏ "),
+    );
+    
+    let mut byte_buffer = Vec::with_capacity(total_chunks);
+    
+    for (i, chunk) in padded_binary_string.as_bytes().chunks(8).enumerate() {
         let chunk_str = std::str::from_utf8(chunk)
             .expect("Invalid UTF-8 sequence in binary data");
         let byte = u8::from_str_radix(chunk_str, 2)
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid binary chunk"))?;
         byte_buffer.push(byte);
+        
+        pb.inc(1);
+        pb.set_message(format!("Processing chunk {}/{}", i + 1, total_chunks));
     }
+    
+    pb.set_message("Writing bytes to file...");
     writer.write_all(&byte_buffer)?;
     writer.flush()?;
+    
+    pb.finish_with_message(format!("✅ File saved successfully to: {} 🎉", file_path));
     Ok(())
 }
 
