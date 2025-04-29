@@ -7,7 +7,10 @@ use std::collections::HashMap;
 use serde_json;
 
 mod dictionary;
-use dictionary::FIRST_DICT;
+mod utils;
+
+use dictionary::{FIRST_DICT, SECOND_DICT};
+use utils::matches_pattern;
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     let mut file = File::open(file_path)?;
@@ -210,6 +213,59 @@ pub fn encoding_one(binary_string: &str) -> io::Result<String> {
     // Concatenate the dot strings (no separator needed)
     Ok(result.concat())
 }
+pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
+    if dot_string.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut result = String::new();
+    let mut chars = dot_string.chars().peekable();
+
+    while chars.peek().is_some() {
+        if *chars.peek().unwrap() == ' ' {
+            chars.next();
+            continue;
+        }
+        
+        let mut matched = false;
+        
+        let candidates = [".....", "....", "...", "..", ". .", "."];
+        
+        for &pattern in &candidates {
+            if matches_pattern(&mut chars.clone(), pattern) {
+                if let Some(&symbol) = SECOND_DICT.get(pattern) {
+                    result.push(symbol);
+
+                    for _ in 0..pattern.chars().count() {
+                        chars.next();
+                    }
+                    
+                    matched = true;
+                    break;
+                }
+            }
+        }
+        
+        if !matched {
+            let mut problematic_part = String::new();
+            let mut chars_clone = chars.clone();
+            for _ in 0..10 {
+                if let Some(c) = chars_clone.next() {
+                    problematic_part.push(c);
+                } else {
+                    break;
+                }
+            }
+            
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Invalid or unknown dot pattern at position: '{}'", problematic_part)
+            ));
+        }
+    }
+    
+    Ok(result)
+}
 
 #[cfg(test)]
 mod tests {
@@ -252,6 +308,47 @@ mod tests {
         let binary7 = "0000000001";
         let result7 = encoding_one(binary7).unwrap();
         assert_eq!(result7, ".");
+    }
+    
+    #[test]
+    fn test_encoding_two() {
+        // Test with various patterns
+        assert_eq!(encoding_two(".").unwrap(), "*");
+        assert_eq!(encoding_two("..").unwrap(), "%");
+        assert_eq!(encoding_two("...").unwrap(), "$");
+        assert_eq!(encoding_two("....").unwrap(), "#");
+        assert_eq!(encoding_two(".....").unwrap(), "!");
+        assert_eq!(encoding_two(". .").unwrap(), "&");
+        
+        // Test with combinations
+        assert_eq!(encoding_two(".. ...").unwrap(), "%$");
+        assert_eq!(encoding_two(". . .").unwrap(), "&*");
+        assert_eq!(encoding_two("...........").unwrap(), "!!*");
+        
+        // Tests with explicit spaces
+        assert_eq!(encoding_two("... ...").unwrap(), "$$");
+        assert_eq!(encoding_two(". . . . .").unwrap(), "&&*");
+        assert_eq!(encoding_two(".. .. ..").unwrap(), "%%%");
+        
+        // Test with a mix of patterns and spaces
+        let mixed = "...... . .....";
+        assert_eq!(encoding_two(mixed).unwrap(), "!&!");
+        
+        // Test with leading and trailing spaces
+        assert_eq!(encoding_two(" .").unwrap(), "*");
+        assert_eq!(encoding_two(". ").unwrap(), "*");
+        assert_eq!(encoding_two(" . ").unwrap(), "*");
+        
+        // Test with multiple consecutive spaces
+        assert_eq!(encoding_two(".  .").unwrap(), "**");
+        assert_eq!(encoding_two(".   .").unwrap(), "**");
+        
+        // Test with empty string
+        assert_eq!(encoding_two("").unwrap(), "");
+        
+        // Test error case with invalid pattern
+        assert!(encoding_two("...x").is_err());
+        assert!(encoding_two("abc").is_err());
     }
 }
 
