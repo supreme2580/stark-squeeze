@@ -48,6 +48,10 @@ fn pad_binary_string(binary_string: &str) -> String {
     format!("{}{}", binary_string, "0".repeat(padding_needed))
 }
 
+fn unpad_binary_string(padded: &str, original_length: usize) -> String {
+    padded.chars().take(original_length).collect()
+}
+
 fn read_binary_file(file_path: &str) -> io::Result<String> {
     let mut file = File::open(file_path)?;
     let mut length_bytes = [0u8; 2];
@@ -61,10 +65,10 @@ fn read_binary_file(file_path: &str) -> io::Result<String> {
         let byte_binary = format!("{:08b}", byte_buffer[0]);
         binary_string.push_str(&byte_binary);
     }
-    binary_string.truncate(original_length);
-    Ok(binary_string)
+    
+    // Use unpad_binary_string to truncate to the original length
+    Ok(unpad_binary_string(&binary_string, original_length))
 }
-
 pub fn split_by_5(binary_string: &str) -> String {
     if binary_string.is_empty() {
         return serde_json::json!([]).to_string();
@@ -254,6 +258,34 @@ mod tests {
         assert_eq!(result7, ".");
     }
 }
+
+#[test]
+fn test_unpad_binary_string() {
+    // Case 1: Padded binary string
+    let padded = "11010000";
+    let original_length = 5;
+    assert_eq!(unpad_binary_string(padded, original_length), "11010");
+
+    // Case 2: Already unpadded binary string
+    let unpadded = "11010000";
+    let original_length = 8;
+    assert_eq!(unpad_binary_string(unpadded, original_length), "11010000");
+
+    // Case 3: Empty binary string
+    let empty = "";
+    let original_length = 0;
+    assert_eq!(unpad_binary_string(empty, original_length), "");
+
+    // Case 4: Edge case - original length is 0
+    let padded = "10101010";
+    let original_length = 0;
+    assert_eq!(unpad_binary_string(padded, original_length), "");
+
+    // Case 5: Edge case - original length equals padded length
+    let padded = "11111111";
+    let original_length = 8;
+    assert_eq!(unpad_binary_string(padded, original_length), "11111111");
+} 
 
 fn main() {
     // Example usage of encoding_one
