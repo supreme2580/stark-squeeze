@@ -7,7 +7,10 @@ use std::collections::HashMap;
 use serde_json;
 
 mod dictionary;
+mod utils;
+
 use dictionary::{FIRST_DICT, SECOND_DICT};
+use utils::matches_pattern;
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     let mut file = File::open(file_path)?;
@@ -210,33 +213,33 @@ pub fn encoding_one(binary_string: &str) -> io::Result<String> {
     // Concatenate the dot strings (no separator needed)
     Ok(result.concat())
 }
-
 pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
     if dot_string.is_empty() {
         return Ok(String::new());
     }
 
     let mut result = String::new();
-    
-    let mut pos = 0;
-    
-    while pos < dot_string.len() {
-        if dot_string[pos..].starts_with(' ') {
-            pos += 1;
+    let mut chars = dot_string.chars().peekable();
+
+    while chars.peek().is_some() {
+        if *chars.peek().unwrap() == ' ' {
+            chars.next();
             continue;
         }
+        
         let mut matched = false;
         
-        // Candidate patterns from longest to shortest
         let candidates = [".....", "....", "...", "..", ". .", "."];
         
         for &pattern in &candidates {
-            if pos + pattern.len() <= dot_string.len() && 
-               &dot_string[pos..pos+pattern.len()] == pattern {
-                
+            if matches_pattern(&mut chars.clone(), pattern) {
                 if let Some(&symbol) = SECOND_DICT.get(pattern) {
                     result.push(symbol);
-                    pos += pattern.len();
+
+                    for _ in 0..pattern.chars().count() {
+                        chars.next();
+                    }
+                    
                     matched = true;
                     break;
                 }
@@ -244,15 +247,19 @@ pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
         }
         
         if !matched {
-            let problematic_part = if pos + 10 <= dot_string.len() {
-                &dot_string[pos..pos+10]
-            } else {
-                &dot_string[pos..]
-            };
+            let mut problematic_part = String::new();
+            let mut chars_clone = chars.clone();
+            for _ in 0..10 {
+                if let Some(c) = chars_clone.next() {
+                    problematic_part.push(c);
+                } else {
+                    break;
+                }
+            }
             
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                format!("Invalid or unknown dot pattern at position {}: '{}'", pos, problematic_part)
+                format!("Invalid or unknown dot pattern at position: '{}'", problematic_part)
             ));
         }
     }
