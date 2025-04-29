@@ -9,6 +9,10 @@ use serde_json;
 mod dictionary;
 use dictionary::FIRST_DICT;
 
+use dialoguer::{Input, Password, Select};
+use colored::Colorize;
+
+
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     let mut file = File::open(file_path)?;
     let mut buffer = Vec::new();
@@ -264,25 +268,43 @@ mod tests {
     }
 }
 
-fn main() {
-    // Example usage of encoding_one
-    let binary_string = "0011101110";
-    match encoding_one(binary_string) {
-        Ok(encoded) => println!("Binary: {} -> Encoded: {}", binary_string, encoded),
-        Err(e) => eprintln!("Error encoding binary string: {}", e),
-    }
-    
-    // Original file processing code
-    let file_path = "cat.mp4";
-    let output_path = "output.bin";
+mod starknet_client;
+mod cli;
+mod utils;
 
-    match file_to_binary(file_path) {
-        Ok(binary_data) => {
-            println!("Binary content loaded. Processing...");
-            if let Err(e) = join_by_5(&binary_data, output_path) {
-                eprintln!("Error processing file: {}", e);
-            }
-        }
-        Err(e) => eprintln!("Error reading file: {}", e),
+use clap::{Parser, Subcommand};
+use colored::*;
+
+const APP_NAME: &str = "StarkSqueeze CLI";
+const APP_ABOUT: &str = "Interact with StarkSqueeze";
+
+/// CLI arguments for StarkSqueeze
+#[derive(Parser, Debug)]
+#[command(name = APP_NAME, about = APP_ABOUT)]
+struct CliArgs {
+    #[command(subcommand)]
+    command: Option<Commands>,
+}
+
+/// Commands for the StarkSqueeze CLI
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// Upload data to StarkNet
+    Upload,
+    /// Retrieve data from StarkNet
+    Retrieve,
+    /// List all uploaded data
+    List,
+}
+
+#[tokio::main]
+async fn main() {
+    let args = CliArgs::parse();
+
+    match args.command {
+        Some(Commands::Upload) => cli::upload_data_cli().await,
+        Some(Commands::Retrieve) => cli::retrieve_data_cli().await,
+        Some(Commands::List) => cli::list_all_uploads().await,
+        None => cli::main_menu().await,
     }
 }
