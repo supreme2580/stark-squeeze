@@ -1,10 +1,10 @@
+use crate::starknet_client::{get_all_data, retrieve_data, upload_data};
+use colored::*;
 use dialoguer::{Input, Select};
 use indicatif::{ProgressBar, ProgressStyle};
-use std::time::Duration;
-use crate::starknet_client::{upload_data, retrieve_data, get_all_data};
 use starknet::core::types::FieldElement;
-use colored::*;
 use std::borrow::Cow;
+use std::time::Duration;
 
 pub async fn upload_data_cli() {
     let private_key = loop {
@@ -55,10 +55,12 @@ pub async fn upload_data_cli() {
     let compression_ratio = (compressed_size as f64 / original_size as f64 * 100.0) as u64;
 
     let spinner = ProgressBar::new_spinner();
-    spinner.set_style(ProgressStyle::default_spinner()
-        .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-        .template("{spinner:.yellow} {msg}")
-        .unwrap());
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+            .template("{spinner:.yellow} {msg}")
+            .unwrap(),
+    );
     spinner.enable_steady_tick(Duration::from_millis(100));
     spinner.set_message(Cow::from("Encoding file...".yellow().to_string()));
     std::thread::sleep(Duration::from_secs(2));
@@ -66,7 +68,16 @@ pub async fn upload_data_cli() {
     std::thread::sleep(Duration::from_secs(2));
     spinner.finish_with_message(Cow::from("Upload complete!".green().to_string()));
 
-    if let Err(e) = upload_data(&private_key, upload_id, original_size, compressed_size, &file_type, compression_ratio).await {
+    if let Err(e) = upload_data(
+        &private_key,
+        upload_id,
+        original_size,
+        compressed_size,
+        &file_type,
+        compression_ratio,
+    )
+    .await
+    {
         eprintln!("{} {}", "Error:".red().bold(), e);
         return;
     }
@@ -74,7 +85,11 @@ pub async fn upload_data_cli() {
     println!("{} {}", "Upload ID:".blue().bold(), upload_id);
     println!("{} {} bytes", "Original Size:".blue().bold(), original_size);
     println!("{} {} bytes", "New Size:".blue().bold(), compressed_size);
-    println!("{} {}%", "Compression Ratio:".blue().bold(), compression_ratio);
+    println!(
+        "{} {}%",
+        "Compression Ratio:".blue().bold(),
+        compression_ratio
+    );
 }
 
 pub async fn retrieve_data_cli() {
@@ -106,8 +121,16 @@ pub async fn retrieve_data_cli() {
             println!("{}", "Decoded binary status: Success".green().bold());
             println!("{} {}", "File Type:".blue().bold(), file_type);
             println!("{} {} bytes", "Original Size:".blue().bold(), original_size);
-            println!("{} {} bytes", "Compressed Size:".blue().bold(), compressed_size);
-            println!("{} {}%", "Compression Ratio:".blue().bold(), compression_ratio);
+            println!(
+                "{} {} bytes",
+                "Compressed Size:".blue().bold(),
+                compressed_size
+            );
+            println!(
+                "{} {}%",
+                "Compression Ratio:".blue().bold(),
+                compression_ratio
+            );
         }
         Err(e) => {
             eprintln!("{} {}", "Error:".red().bold(), e);
@@ -134,7 +157,11 @@ pub async fn list_all_uploads() {
                 for (upload_id, file_type, compression_ratio) in data {
                     println!("{} {}", "ID:".blue().bold(), upload_id);
                     println!("{} {}", "File Type:".blue().bold(), file_type);
-                    println!("{} {}%", "Compression Ratio:".blue().bold(), compression_ratio);
+                    println!(
+                        "{} {}%",
+                        "Compression Ratio:".blue().bold(),
+                        compression_ratio
+                    );
                     println!("---");
                 }
             }
