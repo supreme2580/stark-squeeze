@@ -262,6 +262,63 @@ pub fn encoding_one(binary_string: &str) -> io::Result<String> {
     // Concatenate the dot strings (no separator needed)
     Ok(result.concat())
 }
+
+pub fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
+    if encoded_string.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut result = String::new();
+    let mut chars = encoded_string.chars().peekable();
+
+    // Iterate over the encoded string
+    while chars.peek().is_some() {
+        if *chars.peek().unwrap() == ' ' {
+            // Skip spaces
+            chars.next();
+            continue;
+        }
+
+        let mut matched = false;
+
+        // Check all possible patterns in SECOND_DICT to match the encoded part
+        for length in (1..=5).rev() { // From "....." to "."
+            let pattern: String = chars.clone().take(length).collect();
+            if let Some(&symbol) = SECOND_DICT.get(pattern.as_str()) {
+                result.push(symbol);
+                // Skip the number of characters that matched
+                for _ in 0..length {
+                    chars.next();
+                }
+                matched = true;
+                break;
+            }
+        }
+
+        if !matched {
+            let mut problematic_part = String::new();
+            let mut chars_clone = chars.clone();
+            for _ in 0..10 {
+                if let Some(c) = chars_clone.next() {
+                    problematic_part.push(c);
+                } else {
+                    break;
+                }
+            }
+
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "Invalid or unknown symbol in the encoded string at position: '{}'",
+                    problematic_part
+                ),
+            ));
+        }
+    }
+
+    Ok(result)
+}
+
 pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
     if dot_string.is_empty() {
         return Ok(String::new());
