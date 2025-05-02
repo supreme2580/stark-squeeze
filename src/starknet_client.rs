@@ -6,26 +6,38 @@ use starknet::core::utils::get_selector_from_name;
 use starknet::providers::jsonrpc::HttpTransport;
 use starknet::providers::{JsonRpcClient, Provider};
 use starknet::signers::{LocalWallet, SigningKey};
-use std::num::ParseIntError;
+use std::env;
+use std::error::Error;
 use url::Url;
+use dotenvy::dotenv;
 
-const RPC_URL: &str = "https://starknet-testnet.public.blastapi.io";
-const CONTRACT_ADDRESS: &str = "0xYOUR_CONTRACT_ADDRESS";
-const ACCOUNT_ADDRESS: &str = "0x478935085396927196704S";
-const CHAIN_ID: &str = "YOUR_CHAIN_ID";
+/// Loads an environment variable or returns an error.
+fn get_env_var(name: &str) -> Result<String, Box<dyn Error>> {
+    env::var(name).map_err(|_| format!("Environment variable `{}` is not set", name).into())
+}
 
+/// Parses a FieldElement from an environment variable.
+fn get_env_felt(name: &str) -> Result<FieldElement, Box<dyn Error>> {
+    let val = get_env_var(name)?;
+    FieldElement::from_hex_be(&val).map_err(|e| format!("Invalid FieldElement in `{}`: {}", name, e).into())
+}
+
+/// Loads the StarkNet account from the environment and private key.
 pub async fn get_account(
     private_key_hex: &str,
 ) -> Result<SingleOwnerAccount<JsonRpcClient<HttpTransport>, LocalWallet>, Box<dyn std::error::Error>>
 {
-    let provider = JsonRpcClient::new(HttpTransport::new(Url::parse(RPC_URL)?));
+    dotenv().ok(); // Load .env
+    let rpc_url = get_env_var("RPC_URL")?;
+    let provider = JsonRpcClient::new(HttpTransport::new(Url::parse(&rpc_url)?));
+
     let private_key = FieldElement::from_hex_be(private_key_hex)
         .map_err(|e| format!("Invalid private key: {}", e))?;
     let signer = LocalWallet::from(SigningKey::from_secret_scalar(private_key));
-    let account_address = FieldElement::from_hex_be(ACCOUNT_ADDRESS)
-        .map_err(|e| format!("Invalid account address: {}", e))?;
-    let chain_id =
-        FieldElement::from_hex_be(CHAIN_ID).map_err(|e| format!("Invalid chain ID: {}", e))?;
+
+    let account_address = get_env_felt("ACCOUNT_ADDRESS")?;
+    let chain_id = get_env_felt("CHAIN_ID")?;
+
     Ok(SingleOwnerAccount::new(
         provider,
         signer,
@@ -35,6 +47,7 @@ pub async fn get_account(
     ))
 }
 
+/// Uploads compressed data metadata to the contract.
 pub async fn upload_data(
     private_key: &str,
     upload_id: FieldElement,
@@ -43,9 +56,9 @@ pub async fn upload_data(
     file_type: &str,
     compression_ratio: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    dotenv().ok();
     let account = get_account(private_key).await?;
-    let contract_address = FieldElement::from_hex_be(CONTRACT_ADDRESS)
-        .map_err(|e| format!("Invalid contract address: {}", e))?;
+    let contract_address = get_env_felt("CONTRACT_ADDRESS")?;
     let file_type_felt = short_string_to_felt(file_type)?;
 
     let call = Call {
@@ -68,13 +81,14 @@ pub async fn upload_data(
     Ok(())
 }
 
+/// Retrieves metadata for a given upload ID.
 pub async fn retrieve_data(
     private_key: &str,
     upload_id: FieldElement,
 ) -> Result<(u64, u64, String, u64), Box<dyn std::error::Error>> {
+    dotenv().ok();
     let account = get_account(private_key).await?;
-    let contract_address = FieldElement::from_hex_be(CONTRACT_ADDRESS)
-        .map_err(|e| format!("Invalid contract address: {}", e))?;
+    let contract_address = get_env_felt("CONTRACT_ADDRESS")?;
 
     let call = FunctionCall {
         contract_address,
@@ -96,7 +110,7 @@ pub async fn retrieve_data(
             .to_string()
             .parse::<u64>()
             .map_err(|e| format!("Invalid compressed size: {}", e))?,
-        result[2].to_string(),
+        result[2].to_string(), // file_type as a string
         result[3]
             .to_string()
             .parse::<u64>()
@@ -104,12 +118,13 @@ pub async fn retrieve_data(
     ))
 }
 
+/// Retrieves all uploaded file metadata entries.
 pub async fn get_all_data(
     private_key: &str,
 ) -> Result<Vec<(FieldElement, String, u64)>, Box<dyn std::error::Error>> {
+    dotenv().ok();
     let account = get_account(private_key).await?;
-    let contract_address = FieldElement::from_hex_be(CONTRACT_ADDRESS)
-        .map_err(|e| format!("Invalid contract address: {}", e))?;
+    let contract_address = get_env_felt("CONTRACT_ADDRESS")?;
 
     let call = FunctionCall {
         contract_address,
@@ -123,11 +138,13 @@ pub async fn get_all_data(
         .await?;
 
     let mut data = Vec::new();
-    for i in 0..result.len() {
-        let upload_id = result[i];
-        let file_type = "txt".to_string(); // Replace with actual file type
-        let compression_ratio = 50; // Replace with actual compression ratio
-        data.push((upload_id, file_type, compression_ratio));
+    let chunks = result.chunks(3);
+    for chunk in chunks {
+        if let [upload_id, file_type_felt, compression_ratio_felt] = chunk {
+            let file_type = file_type_felt.to_string(); // Consider converting back to string if you used `felt_to_short_string`
+            let compression_ratio = compression_ratio_felt.to_string().parse::<u64>()?;
+            data.push((*upload_id, file_type, compression_ratio));
+        }
     }
 
     Ok(data)
