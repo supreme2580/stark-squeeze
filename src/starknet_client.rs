@@ -1,10 +1,9 @@
 use crate::utils::short_string_to_felt;
 use starknet::accounts::Call;
-use starknet::accounts::{Account, ConnectedAccount, SingleOwnerAccount};
+use starknet::accounts::{Account, SingleOwnerAccount, ConnectedAccount};
 use starknet::core::types::{BlockId, BlockTag, FieldElement, FunctionCall};
 use starknet::core::utils::get_selector_from_name;
-use starknet::providers::jsonrpc::HttpTransport;
-use starknet::providers::{JsonRpcClient, Provider};
+use starknet::providers::{jsonrpc::HttpTransport, JsonRpcClient, Provider};
 use starknet::signers::{LocalWallet, SigningKey};
 use std::env;
 use std::error::Error;

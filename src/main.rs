@@ -5,21 +5,17 @@ use std::fs::File;
 use std::io::{self, BufWriter, Read, Write};
 use std::thread::sleep;
 use std::time::Duration;
+use dictionary::{FIRST_DICT, SECOND_DICT};
+use utils::matches_pattern;
+use clap::{Parser, Subcommand};
 
 mod dictionary;
 mod utils;
 
-use dictionary::{FIRST_DICT, SECOND_DICT};
-use utils::matches_pattern;
-
-use colored::Colorize;
-use dialoguer::{Input, Password, Select};
-
 mod cli;
 mod starknet_client;
 
-use clap::{Parser, Subcommand};
-use colored::*;
+
 
 const APP_NAME: &str = "StarkSqueeze CLI";
 const APP_ABOUT: &str = "Interact with StarkSqueeze";
