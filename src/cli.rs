@@ -6,53 +6,52 @@ use starknet::core::types::FieldElement;
 use std::borrow::Cow;
 use std::time::Duration;
 
-pub async fn upload_data_cli() {
-    let private_key = loop {
-        match Input::<String>::new()
-            .with_prompt("Enter your private key")
-            .interact_text()
-        {
-            Ok(key) => break key,
-            Err(e) => eprintln!("{} {}", "Error:".red().bold(), e),
-        }
-    };
+/// Prints a styled error message
+fn print_error(context: &str, error: &dyn std::fmt::Display) {
+    eprintln!("{} {}: {}", "Error".red().bold(), context, error);
+}
 
-    let file_path = loop {
-        match Input::<String>::new()
-            .with_prompt("Enter the file path")
-            .interact_text()
-        {
-            Ok(path) => break path,
-            Err(e) => eprintln!("{} {}", "Error:".red().bold(), e),
-        }
-    };
+/// Prints a styled info message
+fn print_info(label: &str, value: impl std::fmt::Display) {
+    println!("{} {}", label.blue().bold(), value);
+}
 
-    let file_type = loop {
-        match Input::<String>::new()
-            .with_prompt("Enter the file type")
-            .interact_text()
-        {
-            Ok(file_type) => break file_type,
-            Err(e) => eprintln!("{} {}", "Error:".red().bold(), e),
+/// Prompts the user for string input
+async fn prompt_string(prompt: &str) -> String {
+    loop {
+        match Input::<String>::new().with_prompt(prompt).interact_text() {
+            Ok(value) => return value,
+            Err(e) => print_error("Failed to read input", &e),
         }
-    };
+    }
+}
 
-    let original_size = loop {
-        match Input::<String>::new()
-            .with_prompt("Enter the original size (bytes)")
-            .interact_text()
-        {
-            Ok(size_str) => match size_str.parse::<u64>() {
-                Ok(size) => break size,
-                Err(e) => eprintln!("{} {}", "Error:".red().bold(), e),
+/// Prompts the user for input that implements FromStr
+async fn prompt_input<T: std::str::FromStr>(prompt: &str, error_hint: &str) -> T
+where
+    <T as std::str::FromStr>::Err: std::fmt::Display,
+{
+    loop {
+        match Input::<String>::new().with_prompt(prompt).interact_text() {
+            Ok(raw) => match raw.parse::<T>() {
+                Ok(val) => return val,
+                Err(e) => print_error(error_hint, &e),
             },
-            Err(e) => eprintln!("{} {}", "Error:".red().bold(), e),
+            Err(e) => print_error("Failed to read input", &e),
         }
-    };
+    }
+}
 
-    let upload_id = FieldElement::from(1u64); // Use u64 for FieldElement
-    let compressed_size = original_size / 2; // Simulate compression
-    let compression_ratio = (compressed_size as f64 / original_size as f64 * 100.0) as u64;
+/// Uploads a file with compression metadata
+pub async fn upload_data_cli() {
+    let private_key = prompt_string("Enter your private key").await;
+    let file_path = prompt_string("Enter the file path").await;
+    let file_type = prompt_string("Enter the file type").await;
+    let original_size: u64 = prompt_input("Enter the original size (bytes)", "Please enter a valid number").await;
+
+    let upload_id = FieldElement::from(1u64);
+    let compressed_size = original_size / 2;
+    let compression_ratio = ((compressed_size as f64 / original_size as f64) * 100.0) as u64;
 
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(
@@ -62,92 +61,54 @@ pub async fn upload_data_cli() {
             .unwrap(),
     );
     spinner.enable_steady_tick(Duration::from_millis(100));
-    spinner.set_message(Cow::from("Encoding file...".yellow().to_string()));
+    spinner.set_message("Encoding file...".yellow().to_string());
     std::thread::sleep(Duration::from_secs(2));
-    spinner.set_message(Cow::from("Uploading data...".yellow().to_string()));
+    spinner.set_message("Uploading data...".yellow().to_string());
     std::thread::sleep(Duration::from_secs(2));
-    spinner.finish_with_message(Cow::from("Upload complete!".green().to_string()));
+    spinner.finish_with_message("Upload complete!".green().to_string());
 
-    if let Err(e) = upload_data(
-        &private_key,
-        upload_id,
-        original_size,
-        compressed_size,
-        &file_type,
-        compression_ratio,
-    )
-    .await
-    {
-        eprintln!("{} {}", "Error:".red().bold(), e);
+    if let Err(e) = upload_data(&private_key, upload_id, original_size, compressed_size, &file_type, compression_ratio).await {
+        print_error("Failed to upload data", &e);
+        println!("Hint: Check your network connection or private key.");
         return;
     }
 
-    println!("{} {}", "Upload ID:".blue().bold(), upload_id);
-    println!("{} {} bytes", "Original Size:".blue().bold(), original_size);
-    println!("{} {} bytes", "New Size:".blue().bold(), compressed_size);
-    println!(
-        "{} {}%",
-        "Compression Ratio:".blue().bold(),
-        compression_ratio
-    );
+    print_info("Upload ID:", upload_id);
+    print_info("Original Size:", format!("{} bytes", original_size));
+    print_info("New Size:", format!("{} bytes", compressed_size));
+    print_info("Compression Ratio:", format!("{}%", compression_ratio));
 }
 
+/// Retrieves previously uploaded data
 pub async fn retrieve_data_cli() {
-    let private_key = loop {
-        match Input::<String>::new()
-            .with_prompt("Enter your private key")
-            .interact_text()
-        {
-            Ok(key) => break key,
-            Err(e) => eprintln!("{} {}", "Error:".red().bold(), e),
-        }
-    };
+    let private_key = prompt_string("Enter your private key").await;
 
     let upload_id = loop {
-        match Input::<String>::new()
-            .with_prompt("Enter the upload ID or hash")
-            .interact_text()
-        {
-            Ok(id_str) => match FieldElement::from_hex_be(&id_str) {
-                Ok(id) => break id,
-                Err(e) => eprintln!("{} {}", "Error:".red().bold(), e),
-            },
-            Err(e) => eprintln!("{} {}", "Error:".red().bold(), e),
+        let input = prompt_string("Enter the upload ID or hash").await;
+        match FieldElement::from_hex_be(&input) {
+            Ok(val) => break val,
+            Err(e) => print_error("Invalid hex input for upload ID", &e),
         }
     };
 
     match retrieve_data(&private_key, upload_id).await {
         Ok((original_size, compressed_size, file_type, compression_ratio)) => {
             println!("{}", "Decoded binary status: Success".green().bold());
-            println!("{} {}", "File Type:".blue().bold(), file_type);
-            println!("{} {} bytes", "Original Size:".blue().bold(), original_size);
-            println!(
-                "{} {} bytes",
-                "Compressed Size:".blue().bold(),
-                compressed_size
-            );
-            println!(
-                "{} {}%",
-                "Compression Ratio:".blue().bold(),
-                compression_ratio
-            );
+            print_info("File Type:", file_type);
+            print_info("Original Size:", format!("{} bytes", original_size));
+            print_info("Compressed Size:", format!("{} bytes", compressed_size));
+            print_info("Compression Ratio:", format!("{}%", compression_ratio));
         }
         Err(e) => {
-            eprintln!("{} {}", "Error:".red().bold(), e);
+            print_error("Failed to retrieve data", &e);
+            println!("Hint: Ensure the upload ID is correct and try again.");
         }
     }
 }
 
+/// Lists all uploaded files
 pub async fn list_all_uploads() {
-    let private_key = loop {
-        match Input::<String>::new()
-            .with_prompt("Enter your private key")
-            .interact_text()
-        {
-            Ok(key) => break key,
-            Err(e) => eprintln!("{} {}", "Error:".red().bold(), e),
-        }
-    };
+    let private_key = prompt_string("Enter your private key").await;
 
     match get_all_data(&private_key).await {
         Ok(data) => {
@@ -155,26 +116,23 @@ pub async fn list_all_uploads() {
                 println!("{}", "No uploads found.".yellow().bold());
             } else {
                 for (upload_id, file_type, compression_ratio) in data {
-                    println!("{} {}", "ID:".blue().bold(), upload_id);
-                    println!("{} {}", "File Type:".blue().bold(), file_type);
-                    println!(
-                        "{} {}%",
-                        "Compression Ratio:".blue().bold(),
-                        compression_ratio
-                    );
-                    println!("---");
+                    print_info("ID:", upload_id);
+                    print_info("File Type:", file_type);
+                    print_info("Compression Ratio:", format!("{}%", compression_ratio));
+                    println!("{}", "---".dimmed());
                 }
             }
         }
         Err(e) => {
-            eprintln!("{} {}", "Error:".red().bold(), e);
+            print_error("Failed to retrieve uploads", &e);
         }
     }
 }
 
+/// Displays the CLI menu and handles command routing
 pub async fn main_menu() {
     loop {
-        println!("{}", "🚀 Welcome to StarkSqueeze CLI!".bold().cyan());
+        println!("\n{}", "🚀 Welcome to StarkSqueeze CLI!".bold().cyan());
         println!("{}", "Please choose an option:".bold());
 
         let options = vec!["Upload Data", "Retrieve Data", "Get All Data", "Exit"];
@@ -186,7 +144,7 @@ pub async fn main_menu() {
         {
             Ok(sel) => sel,
             Err(e) => {
-                eprintln!("{} {}", "Error:".red().bold(), e);
+                print_error("Selection failed", &e);
                 continue;
             }
         };
