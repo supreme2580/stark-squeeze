@@ -3,7 +3,6 @@ use colored::*;
 use dialoguer::{Input, Select};
 use indicatif::{ProgressBar, ProgressStyle};
 use starknet::core::types::FieldElement;
-use std::borrow::Cow;
 use std::time::Duration;
 
 /// Prints a styled error message
@@ -45,7 +44,8 @@ where
 /// Uploads a file with compression metadata
 pub async fn upload_data_cli() {
     let private_key = prompt_string("Enter your private key").await;
-    let file_path = prompt_string("Enter the file path").await;
+    // Line 47
+    let _file_path = prompt_string("Enter the file path").await;
     let file_type = prompt_string("Enter the file type").await;
     let original_size: u64 = prompt_input("Enter the original size (bytes)", "Please enter a valid number").await;
 
