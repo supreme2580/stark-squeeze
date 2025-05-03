@@ -21,9 +21,36 @@ const APP_NAME: &str = "StarkSqueeze CLI";
 const APP_ABOUT: &str = "Interact with StarkSqueeze";
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
-    let mut file = File::open(file_path)?;
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
+    let file = File::open(file_path)?;
+    let metadata = file.metadata()?;
+    let total_size = metadata.len();
+
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(
+        ProgressStyle::with_template("📦 [{bar:40.green/blue}] {percent}% ⏳ {bytes}/{total_bytes} read")
+            .unwrap()
+            .progress_chars("█▉▊▋▌▍▎▏ "),
+    );
+
+    let mut reader = io::BufReader::new(file);
+    let mut buffer = Vec::with_capacity(total_size as usize);
+    let mut chunk = [0u8; 4096]; // 4KB chunk
+
+    loop {
+        match reader.read(&mut chunk) {
+            Ok(0) => break, // EOF
+            Ok(n) => {
+                buffer.extend_from_slice(&chunk[..n]);
+                pb.inc(n as u64);
+            }
+            Err(e) => {
+                pb.finish_and_clear();
+                return Err(io::Error::new(io::ErrorKind::Other, format!("Read error: {}", e)));
+            }
+        }
+    }
+
+    pb.finish_with_message("✅ File loaded into memory! 🎉");
     Ok(buffer)
 }
 
