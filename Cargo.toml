@@ -1,5 +1,5 @@
 [package]
-name = "stark-squeeze"
+name = "stark_squeeze"
 version = "0.1.0"
 edition = "2021"
 
