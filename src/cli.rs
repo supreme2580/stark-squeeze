@@ -3,6 +3,7 @@ use colored::*;
 use dialoguer::{Input, Select};
 use indicatif::{ProgressBar, ProgressStyle};
 use starknet::core::types::FieldElement;
+use std::path::Path;
 use std::time::Duration;
 
 /// Prints a styled error message
@@ -44,10 +45,24 @@ where
 /// Uploads a file with compression metadata
 pub async fn upload_data_cli() {
     let private_key = prompt_string("Enter your private key").await;
-    // Line 47
-    let _file_path = prompt_string("Enter the file path").await;
-    let file_type = prompt_string("Enter the file type").await;
-    let original_size: u64 = prompt_input("Enter the original size (bytes)", "Please enter a valid number").await;
+    let file_path = prompt_string("Enter the file path").await;
+
+    // Automatically determine file size and type
+    let original_size = match std::fs::metadata(&file_path) {
+        Ok(metadata) => metadata.len(),
+        Err(e) => {
+            print_error("Failed to get file metadata", &e);
+            return;
+        }
+    };
+
+    let file_type = match Path::new(&file_path).extension() {
+        Some(ext) => ext.to_string_lossy().to_string(),
+        None => {
+            print_error("Failed to determine file type", &"No file extension found");
+            return;
+        }
+    };
 
     let upload_id = FieldElement::from(1u64);
     let compressed_size = original_size / 2;
