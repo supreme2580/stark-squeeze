@@ -9,6 +9,7 @@ use std::env;
 use std::error::Error;
 use url::Url;
 use dotenvy::dotenv;
+use indicatif::{ProgressBar, ProgressStyle};
 
 /// Loads an environment variable or returns an error.
 fn get_env_var(name: &str) -> Result<String, Box<dyn Error>> {
@@ -73,6 +74,58 @@ pub async fn upload_data(
     };
 
     let tx = account.execute(vec![call]).send().await?;
+    println!(
+        "✅ Upload transaction sent! Tx Hash: {:?}",
+        tx.transaction_hash
+    );
+    Ok(())
+}
+
+/// Uploads data to the contract with progress display.
+pub async fn upload_data_with_progress(
+    private_key: &str,
+    upload_id: FieldElement,
+    original_size: u64,
+    compressed_size: u64,
+    file_type: &str,
+    compression_ratio: u64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    dotenv().ok();
+    let account = get_account(private_key).await?;
+    let contract_address = get_env_felt("CONTRACT_ADDRESS")?;
+    let file_type_felt = short_string_to_felt(file_type)?;
+
+    let call = Call {
+        to: contract_address,
+        selector: get_selector_from_name("upload_data")?,
+        calldata: vec![
+            upload_id,
+            FieldElement::from(original_size),
+            FieldElement::from(compressed_size),
+            file_type_felt,
+            FieldElement::from(compression_ratio),
+        ],
+    };
+
+    // Initialize progress bar
+    let progress_bar = ProgressBar::new(100);
+    progress_bar.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}")?
+            .progress_chars("#>-"),
+    );
+
+    progress_bar.set_message("Uploading data to StarkNet...");
+
+    // Simulate progress (replace with actual progress tracking if possible)
+    for i in 0..100 {
+        progress_bar.inc(1);
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    }
+
+    let tx = account.execute(vec![call]).send().await?;
+    progress_bar.finish_with_message("Upload complete!");
+
     println!(
         "✅ Upload transaction sent! Tx Hash: {:?}",
         tx.transaction_hash
