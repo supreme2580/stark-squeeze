@@ -1976,6 +1976,7 @@ dependencies = [
  "phf",
  "serde",
  "serde_json",
+ "sha2",
  "starknet",
  "tokio",
  "url",
