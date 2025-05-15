@@ -109,7 +109,7 @@ pub async fn upload_data(
     }
 
     let tx = account.execute(vec![call]).send().await?;
-    println!("\n✅ Upload transaction sent! Tx Hash: {:?}", tx.transaction_hash);
+    println!("\n✅ Upload transaction sent! Tx Hash: 0x{:x}", tx.transaction_hash);
     Ok(())
 }
 
