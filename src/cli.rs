@@ -5,6 +5,10 @@ use indicatif::{ProgressBar, ProgressStyle};
 use starknet::core::types::FieldElement;
 use std::path::Path;
 use std::time::Duration;
+use sha2::{Sha256, Digest};
+use std::fs::File;
+use std::io::Read;
+use crate::{encoding_one, encoding_two};
 
 /// Prints a styled error message
 fn print_error(context: &str, error: &dyn std::fmt::Display) {
@@ -26,36 +30,39 @@ async fn prompt_string(prompt: &str) -> String {
     }
 }
 
-/// Prompts the user for input that implements FromStr
-async fn prompt_input<T: std::str::FromStr>(prompt: &str, error_hint: &str) -> T
-where
-    <T as std::str::FromStr>::Err: std::fmt::Display,
-{
-    loop {
-        match Input::<String>::new().with_prompt(prompt).interact_text() {
-            Ok(raw) => match raw.parse::<T>() {
-                Ok(val) => return val,
-                Err(e) => print_error(error_hint, &e),
-            },
-            Err(e) => print_error("Failed to read input", &e),
-        }
-    }
-}
-
 /// Uploads a file with compression metadata
 pub async fn upload_data_cli() {
-    let private_key = prompt_string("Enter your private key").await;
     let file_path = prompt_string("Enter the file path").await;
 
-    // Automatically determine file size and type
-    let original_size = match std::fs::metadata(&file_path) {
-        Ok(metadata) => metadata.len(),
+    // Read file contents and generate hash
+    let mut file = match File::open(&file_path) {
+        Ok(f) => f,
         Err(e) => {
-            print_error("Failed to get file metadata", &e);
+            print_error("Failed to open file", &e);
             return;
         }
     };
 
+    let mut hasher = Sha256::new();
+    let mut buffer = Vec::new();
+    if let Err(e) = file.read_to_end(&mut buffer) {
+        print_error("Failed to read file", &e);
+        return;
+    }
+    hasher.update(&buffer);
+    let hash = hasher.finalize();
+    
+    // Convert first 16 bytes of hash to FieldElement
+    let upload_id = match FieldElement::from_byte_slice_be(&hash[..16]) {
+        Ok(id) => id,
+        Err(e) => {
+            print_error("Failed to generate upload ID", &e);
+            return;
+        }
+    };
+
+    // Automatically determine file size and type
+    let original_size = buffer.len() as u64;
     let file_type = match Path::new(&file_path).extension() {
         Some(ext) => ext.to_string_lossy().to_string(),
         None => {
@@ -63,10 +70,6 @@ pub async fn upload_data_cli() {
             return;
         }
     };
-
-    let upload_id = FieldElement::from(1u64);
-    let compressed_size = original_size / 2;
-    let compression_ratio = ((compressed_size as f64 / original_size as f64) * 100.0) as u64;
 
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(
@@ -76,17 +79,43 @@ pub async fn upload_data_cli() {
             .unwrap(),
     );
     spinner.enable_steady_tick(Duration::from_millis(100));
-    spinner.set_message("Encoding file...".yellow().to_string());
-    std::thread::sleep(Duration::from_secs(2));
-    spinner.set_message("Uploading data...".yellow().to_string());
-    std::thread::sleep(Duration::from_secs(2));
-    spinner.finish_with_message("Upload complete!".green().to_string());
 
-    if let Err(e) = upload_data(&private_key, upload_id, original_size, compressed_size, &file_type, compression_ratio).await {
+    // Convert file contents to binary string
+    let binary_string: String = buffer.iter()
+        .map(|&byte| format!("{:08b}", byte))
+        .collect();
+
+    // First encoding step
+    spinner.set_message("First encoding step...".yellow().to_string());
+    let encoded_one = match encoding_one(&binary_string) {
+        Ok(encoded) => encoded,
+        Err(e) => {
+            print_error("Failed in first encoding step", &e);
+            return;
+        }
+    };
+
+    // Second encoding step
+    spinner.set_message("Second encoding step...".yellow().to_string());
+    let encoded_two = match encoding_two(&encoded_one) {
+        Ok(encoded) => encoded,
+        Err(e) => {
+            print_error("Failed in second encoding step", &e);
+            return;
+        }
+    };
+
+    // Calculate sizes and ratios
+    let compressed_size = encoded_two.len() as u64;
+    let compression_ratio = ((compressed_size as f64 / original_size as f64) * 100.0) as u64;
+
+    spinner.set_message("Uploading data...".yellow().to_string());
+    if let Err(e) = upload_data(compressed_size, &file_type, original_size).await {
         print_error("Failed to upload data", &e);
-        println!("Hint: Check your network connection or private key.");
         return;
     }
+
+    spinner.finish_with_message("Upload complete!".green().to_string());
 
     print_info("Upload ID:", upload_id);
     print_info("Original Size:", format!("{} bytes", original_size));
@@ -96,8 +125,6 @@ pub async fn upload_data_cli() {
 
 /// Retrieves previously uploaded data
 pub async fn retrieve_data_cli() {
-    let private_key = prompt_string("Enter your private key").await;
-
     let upload_id = loop {
         let input = prompt_string("Enter the upload ID or hash").await;
         match FieldElement::from_hex_be(&input) {
@@ -106,7 +133,7 @@ pub async fn retrieve_data_cli() {
         }
     };
 
-    match retrieve_data(&private_key, upload_id).await {
+    match retrieve_data(upload_id).await {
         Ok((original_size, compressed_size, file_type, compression_ratio)) => {
             println!("{}", "Decoded binary status: Success".green().bold());
             print_info("File Type:", file_type);
@@ -123,9 +150,7 @@ pub async fn retrieve_data_cli() {
 
 /// Lists all uploaded files
 pub async fn list_all_uploads() {
-    let private_key = prompt_string("Enter your private key").await;
-
-    match get_all_data(&private_key).await {
+    match get_all_data().await {
         Ok(data) => {
             if data.is_empty() {
                 println!("{}", "No uploads found.".yellow().bold());
