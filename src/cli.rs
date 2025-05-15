@@ -6,9 +6,7 @@ use starknet::core::types::FieldElement;
 use std::path::Path;
 use std::time::Duration;
 use sha2::{Sha256, Digest};
-use std::fs::File;
-use std::io::Read;
-use crate::{encoding_one, encoding_two};
+use crate::{encoding_one, encoding_two, file_to_binary};
 
 /// Prints a styled error message
 fn print_error(context: &str, error: &dyn std::fmt::Display) {
@@ -35,21 +33,16 @@ pub async fn upload_data_cli() {
     let file_path = prompt_string("Enter the file path").await;
 
     // Read file contents and generate hash
-    let mut file = match File::open(&file_path) {
-        Ok(f) => f,
+    let binary_data = match file_to_binary(&file_path) {
+        Ok(data) => data,
         Err(e) => {
-            print_error("Failed to open file", &e);
+            print_error("Failed to read file", &e);
             return;
         }
     };
 
     let mut hasher = Sha256::new();
-    let mut buffer = Vec::new();
-    if let Err(e) = file.read_to_end(&mut buffer) {
-        print_error("Failed to read file", &e);
-        return;
-    }
-    hasher.update(&buffer);
+    hasher.update(&binary_data);
     let hash = hasher.finalize();
     
     // Convert first 16 bytes of hash to FieldElement
@@ -62,7 +55,7 @@ pub async fn upload_data_cli() {
     };
 
     // Automatically determine file size and type
-    let original_size = buffer.len() as u64;
+    let original_size = binary_data.len() as u64;
     let file_type = match Path::new(&file_path).extension() {
         Some(ext) => ext.to_string_lossy().to_string(),
         None => {
@@ -81,7 +74,7 @@ pub async fn upload_data_cli() {
     spinner.enable_steady_tick(Duration::from_millis(100));
 
     // Convert file contents to binary string
-    let binary_string: String = buffer.iter()
+    let binary_string: String = binary_data.iter()
         .map(|&byte| format!("{:08b}", byte))
         .collect();
 
