@@ -31,7 +31,7 @@ async fn prompt_string(prompt: &str) -> String {
 }
 
 /// Uploads a file with compression metadata
-pub async fn upload_data_cli() {
+pub async fn upload_data_cli(disable_limit: bool) {
     let file_path = prompt_string("Enter the file path").await;
 
     // Read file contents and generate hash
@@ -49,6 +49,12 @@ pub async fn upload_data_cli() {
         print_error("Failed to read file", &e);
         return;
     }
+
+    if !disable_limit && buffer.len() > 10 * 1024 * 1024 {
+    print_error("File too large", &"Use --disable-file-size-limit to override the limit.");
+    return;
+    }
+
     hasher.update(&buffer);
     let hash = hasher.finalize();
     
@@ -190,7 +196,7 @@ pub async fn main_menu() {
         };
 
         match selection {
-            0 => upload_data_cli().await,
+            0 => upload_data_cli(true).await,
             1 => retrieve_data_cli().await,
             2 => list_all_uploads().await,
             3 => {
