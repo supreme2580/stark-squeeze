@@ -20,6 +20,81 @@ fn print_info(label: &str, value: impl std::fmt::Display) {
     println!("{} {}", label.blue().bold(), value);
 }
 
+///Prints a styled warning message
+fn print_warning(message: &str) {
+    println!("{} {}", "⚠️ Warning".red().bold(), message);
+}
+
+/// Analyzes file contents for non-ASCII bytes and returns detection results
+fn analyze_non_ascii_bytes(buffer: &[u8]) -> Option<NonAsciiAnalysis> {
+    let mut non_ascii_positions = Vec::new();
+    let mut byte_values = Vec::new();
+
+    for (pos, &byte) in buffer.iter().enumerate(){
+        if byte > 127 {
+            non_ascii_positions.push(pos);
+            byte_values.push(byte);
+
+            // Limit collection to first 10 occurences
+            if non_ascii_positions.len() >= 10 {
+                break;
+            }
+        }
+    }
+
+    if non_ascii_positions.is_empty() {
+        None
+    } else {
+        Some(NonAsciiAnalysis { positions: non_ascii_positions, byte_values, total_non_ascii: buffer.iter().filter(|&&b| b > 127).count(), })
+    }
+}
+
+/// Contains analysis results for non-ASCII byte detection
+struct NonAsciiAnalysis {
+    positions: Vec<usize>,
+    byte_values: Vec<u8>,
+    total_non_ascii: usize,
+}
+
+
+/// Displays a comprehensive warning about non-ASCII bytes in the file
+fn display_non_ascii_warning(analysis: &NonAsciiAnalysis, file_path: &str) {
+    println!("\n{}", "═".repeat(60).yellow());
+    print_warning("Non-ASCII bytes detected in your file!");
+    println!();
+    
+    println!("{}", "📋 File Analysis:".bold());
+    print_info("  File:", file_path);
+    print_info("  Total non-ASCII bytes found:", analysis.total_non_ascii);
+    
+    println!("\n{}", "🔍 Sample Locations:".bold());
+    for (i, (&pos, &byte_val)) in analysis.positions.iter().zip(analysis.byte_values.iter()).enumerate() {
+        println!("  • Position {}: byte value {} (0x{:02X})", pos, byte_val, byte_val);
+        if i >= 4 { // Show max 5 examples
+            if analysis.positions.len() > 5 {
+                println!("  • ... and {} more", analysis.positions.len() - 5);
+            }
+            break;
+        }
+    }
+    
+    println!("\n{}", "⚡ Potential Impacts:".bold());
+    println!("  • May cause encoding/decoding errors in CLI tools");
+    println!("  • Could lead to unexpected behavior during processing");
+    println!("  • Might affect data integrity in text-based operations");
+    println!("  • Can cause compatibility issues across different systems");
+    
+    println!("\n{}", "💡 Recommendations:".bold());
+    println!("  • Review your file content for unexpected characters");
+    println!("  • Consider converting to ASCII-only format if possible");
+    println!("  • Verify that non-ASCII content is intentional and necessary");
+    println!("  • Test thoroughly if proceeding with mixed content");
+    
+    println!("{}", "═".repeat(60).yellow());
+    println!();
+}
+
+
 /// Prompts the user for string input
 async fn prompt_string(prompt: &str) -> String {
     loop {
@@ -51,6 +126,39 @@ pub async fn upload_data_cli() {
     }
     hasher.update(&buffer);
     let hash = hasher.finalize();
+
+    // Check for non-ASCII bytes and warn user
+    if let Some(analysis) = analyze_non_ascii_bytes(&buffer) {
+        display_non_ascii_warning(&analysis, &file_path);
+        
+        // Ask user if they want to continue
+        let options = vec!["Continue with upload", "Cancel and review file"];
+        let selection = match Select::new()
+            .with_prompt("How would you like to proceed?")
+            .items(&options)
+            .default(0)
+            .interact()
+        {
+            Ok(sel) => sel,
+            Err(e) => {
+                print_error("Selection failed", &e);
+                return;
+            }
+        };
+        
+        match selection {
+            0 => {
+                println!("{}", "⚠️  Proceeding with upload despite non-ASCII content...".yellow());
+            }
+            1 => {
+                println!("{}", "📝 Upload cancelled. Please review your file and try again.".blue());
+                return;
+            }
+            _ => unreachable!(),
+        }
+    } else {
+        println!("{}", "✅ File contains only ASCII bytes - no compatibility issues detected.".green());
+    }
     
     // Convert first 16 bytes of hash to FieldElement
     let upload_id = match FieldElement::from_byte_slice_be(&hash[..16]) {
