@@ -20,19 +20,48 @@ fn print_info(label: &str, value: impl std::fmt::Display) {
     println!("{} {}", label.blue().bold(), value);
 }
 
-/// Prompts the user for string input
+/// Prompts the user for string input with optional validation
 async fn prompt_string(prompt: &str) -> String {
     loop {
         match Input::<String>::new().with_prompt(prompt).interact_text() {
-            Ok(value) => return value,
+            Ok(value) => {
+                if value.trim().is_empty() {
+                    print_error("Invalid input", &"Input cannot be empty");
+                    continue;
+                }
+                return value;
+            },
             Err(e) => print_error("Failed to read input", &e),
         }
     }
 }
 
+/// Validates that a string is not empty
+fn validate_non_empty(input: &str, field_name: &str) -> Result<(), String> {
+    if input.trim().is_empty() {
+        return Err(format!("{} cannot be empty", field_name));
+    }
+    Ok(())
+}
+
 /// Uploads a file with compression metadata
-pub async fn upload_data_cli(disable_limit: bool) {
-    let file_path = prompt_string("Enter the file path").await;
+pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
+    // Use the provided file path or prompt for one
+    let file_path = match file_path_arg {
+        Some(path) => path.to_string_lossy().to_string(),
+        None => prompt_string("Enter the file path").await,
+    };
+
+    // Validate the file path
+    if !std::path::Path::new(&file_path).exists() {
+        print_error("Invalid file path", &format!("File does not exist: {}", file_path));
+        return;
+    }
+
+    if !std::path::Path::new(&file_path).is_file() {
+        print_error("Invalid file path", &format!("Path is not a file: {}", file_path));
+        return;
+    }
 
     // Read file contents and generate hash
     let mut file = match File::open(&file_path) {
@@ -49,12 +78,6 @@ pub async fn upload_data_cli(disable_limit: bool) {
         print_error("Failed to read file", &e);
         return;
     }
-
-    if !disable_limit && buffer.len() > 10 * 1024 * 1024 {
-    print_error("File too large", &"Use --disable-file-size-limit to override the limit.");
-    return;
-    }
-
     hasher.update(&buffer);
     let hash = hasher.finalize();
     
@@ -69,8 +92,21 @@ pub async fn upload_data_cli(disable_limit: bool) {
 
     // Automatically determine file size and type
     let original_size = buffer.len() as u64;
+    if original_size == 0 {
+        print_error("Invalid file", &"File is empty");
+        return;
+    }
+    
+    // Validate the file has a valid extension
     let file_type = match Path::new(&file_path).extension() {
-        Some(ext) => ext.to_string_lossy().to_string(),
+        Some(ext) => {
+            let ext_str = ext.to_string_lossy().to_string();
+            if ext_str.is_empty() {
+                print_error("Invalid file type", &"File extension is empty");
+                return;
+            }
+            ext_str
+        },
         None => {
             print_error("Failed to determine file type", &"No file extension found");
             return;
@@ -130,12 +166,42 @@ pub async fn upload_data_cli(disable_limit: bool) {
 }
 
 /// Retrieves previously uploaded data
-pub async fn retrieve_data_cli() {
-    let upload_id = loop {
-        let input = prompt_string("Enter the upload ID or hash").await;
-        match FieldElement::from_hex_be(&input) {
-            Ok(val) => break val,
-            Err(e) => print_error("Invalid hex input for upload ID", &e),
+pub async fn retrieve_data_cli(id_arg: Option<String>) {
+    let upload_id = match id_arg {
+        Some(id) => {
+            // The ID has already been validated in main.rs, but we still need to convert it to FieldElement
+            match FieldElement::from_hex_be(&id) {
+                Ok(val) => val,
+                Err(e) => {
+                    print_error("Invalid hex input for upload ID", &e);
+                    return;
+                }
+            }
+        },
+        None => {
+            // Interactive mode - prompt for ID and validate
+            loop {
+                let input = prompt_string("Enter the upload ID or hash").await;
+                
+                // Validate ID format before trying to convert
+                if !input.starts_with("0x") && input.len() != 66 {
+                    print_error("Invalid upload ID format", 
+                        &format!("Expected 0x-prefixed 64-character hex string, got: {}", input));
+                    continue;
+                }
+                
+                // Check for valid hex characters
+                if !input[2..].chars().all(|c| c.is_ascii_hexdigit()) {
+                    print_error("Invalid upload ID", 
+                        &format!("Upload ID contains non-hexadecimal characters: {}", input));
+                    continue;
+                }
+                
+                match FieldElement::from_hex_be(&input) {
+                    Ok(val) => break val,
+                    Err(e) => print_error("Invalid hex input for upload ID", &e),
+                }
+            }
         }
     };
 
@@ -196,8 +262,8 @@ pub async fn main_menu() {
         };
 
         match selection {
-            0 => upload_data_cli(true).await,
-            1 => retrieve_data_cli().await,
+            0 => upload_data_cli(None).await,
+            1 => retrieve_data_cli(None).await,
             2 => list_all_uploads().await,
             3 => {
                 println!("{}", "👋 Goodbye!".bold().green());
