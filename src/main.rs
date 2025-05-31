@@ -15,7 +15,11 @@ struct CliArgs {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Upload data to StarkNet
-    Upload,
+    Upload {
+        #[arg(long)]
+        disable_file_size_limit: bool,
+    },
+
     /// Retrieve data from StarkNet
     Retrieve,
     /// List all uploaded data
@@ -27,7 +31,10 @@ async fn main() {
     let args = CliArgs::parse();
 
     match args.command {
-        Some(Commands::Upload) => cli::upload_data_cli().await,
+        Some(Commands::Upload { disable_file_size_limit }) => {
+            cli::upload_data_cli(disable_file_size_limit).await;
+        }
+        // Some(Commands::Upload) => cli::upload_data_cli().await,
         Some(Commands::Retrieve) => cli::retrieve_data_cli().await,
         Some(Commands::List) => cli::list_all_uploads().await,
         None => cli::main_menu().await,
