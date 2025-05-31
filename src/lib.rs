@@ -11,7 +11,7 @@ use std::thread::sleep;
 use std::time::Duration;
 use std::collections::HashMap;
 use utils::matches_pattern;
-use dictionary::{FIRST_DICT, SECOND_DICT};
+use dictionary::{Dictionary, FIRST_DICT, SECOND_DICT, CustomDictionary, DictionaryError};
 
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
@@ -197,198 +197,119 @@ pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-pub fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
-    // Handle empty input
-    if dot_string.is_empty() {
-        return Ok(String::new());
-    }
-
-    // Reverse the FIRST_DICT for lookup: dot_string -> 5-bit binary
-    let mut reverse_dict: HashMap<&str, &str> = HashMap::new();
-    for (bin, dot) in FIRST_DICT.entries() {
-        if !dot.is_empty() {
-            reverse_dict.insert(*dot, *bin);
-        }
-    }
-
-    // Parse the dot_string into tokens
-    let tokens: Vec<&str> = dot_string.split('.').filter(|t| !t.is_empty()).collect();
-
-    let mut reconstructed_binary = String::new();
-
-    for token in tokens {
-        match reverse_dict.get(token) {
-            Some(binary_chunk) => reconstructed_binary.push_str(binary_chunk),
-            None => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!("Unknown token '{}' found during decoding", token),
-                ))
-            }
-        }
-    }
-
-    Ok(reconstructed_binary)
-}
-
-pub fn encoding_one(binary_string: &str) -> io::Result<String> {
-    // Handle empty string case
+pub fn encoding_one_with_dict(binary_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
     if binary_string.is_empty() {
         return Ok(String::new());
     }
 
-    // Validate input - ensure only 0s and 1s
     if !binary_string.chars().all(|c| c == '0' || c == '1') {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "Invalid binary string: must contain only 0 and 1",
-        ));
+        return Err(DictionaryError::InvalidFormat("Input must be a binary string".to_string()));
     }
 
-    // Pad the binary string so it's divisible by 5
-    let padded_binary_string = pad_binary_string(binary_string);
+    let chunks: Vec<String> = binary_string
+        .as_bytes()
+        .chunks(5)
+        .map(|chunk| String::from_utf8_lossy(chunk).to_string())
+        .collect();
 
-    // Process the padded string in 5-bit chunks
-    let mut chunks = Vec::new();
-    for i in (0..padded_binary_string.len()).step_by(5) {
-        if i + 5 <= padded_binary_string.len() {
-            chunks.push(&padded_binary_string[i..i + 5]);
+    let mut result = String::new();
+    for chunk in chunks {
+        if let Some(value) = dict.get(&chunk) {
+            result.push_str(value);
+        } else {
+            return Err(DictionaryError::InvalidFormat(format!("No mapping found for chunk: {}", chunk)));
         }
     }
 
-    // Map each chunk to its dot string representation
-    let mut result = Vec::with_capacity(chunks.len());
-
-    for chunk in &chunks {
-        match FIRST_DICT.get(*chunk) {
-            Some(dot_string) => {
-                // Only add non-empty dot strings to the result
-                if !dot_string.is_empty() {
-                    result.push(*dot_string);
-                }
-            }
-            None => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Chunk {} not found in dictionary", chunk),
-                ))
-            }
-        }
-    }
-
-    // Concatenate the dot strings (no separator needed)
-    Ok(result.concat())
+    Ok(result)
 }
 
-pub fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
+pub fn decoding_one_with_dict(dot_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
+    if dot_string.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut result = String::new();
+    let mut current = String::new();
+
+    for c in dot_string.chars() {
+        current.push(c);
+        if let Some(value) = dict.get(&current) {
+            result.push_str(value);
+            current.clear();
+        }
+    }
+
+    if !current.is_empty() {
+        return Err(DictionaryError::InvalidFormat(format!("Invalid sequence at end: {}", current)));
+    }
+
+    Ok(result)
+}
+
+pub fn encoding_two_with_dict(dot_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
+    if dot_string.is_empty() {
+        return Ok(String::new());
+    }
+
+    let mut result = String::new();
+    let mut current = String::new();
+
+    for c in dot_string.chars() {
+        current.push(c);
+        if let Some(value) = dict.get(&current) {
+            result.push_str(value);
+            current.clear();
+        }
+    }
+
+    if !current.is_empty() {
+        return Err(DictionaryError::InvalidFormat(format!("Invalid sequence at end: {}", current)));
+    }
+
+    Ok(result)
+}
+
+pub fn decoding_two_with_dict(encoded_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
     if encoded_string.is_empty() {
         return Ok(String::new());
     }
 
     let mut result = String::new();
-    let mut chars = encoded_string.chars().peekable();
+    let mut current = String::new();
 
-    // Iterate over the encoded string
-    while chars.peek().is_some() {
-        if *chars.peek().unwrap() == ' ' {
-            // Skip spaces
-            chars.next();
-            continue;
+    for c in encoded_string.chars() {
+        current.push(c);
+        if let Some(value) = dict.get(&current) {
+            result.push_str(value);
+            current.clear();
         }
+    }
 
-        let mut matched = false;
-
-        // Check all possible patterns in SECOND_DICT to match the encoded part
-        for length in (1..=5).rev() { // From "....." to "."
-            let pattern: String = chars.clone().take(length).collect();
-            if let Some(&symbol) = SECOND_DICT.get(pattern.as_str()) {
-                result.push(symbol);
-                // Skip the number of characters that matched
-                for _ in 0..length {
-                    chars.next();
-                }
-                matched = true;
-                break;
-            }
-        }
-
-        if !matched {
-            let mut problematic_part = String::new();
-            let mut chars_clone = chars.clone();
-            for _ in 0..10 {
-                if let Some(c) = chars_clone.next() {
-                    problematic_part.push(c);
-                } else {
-                    break;
-                }
-            }
-
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Invalid or unknown symbol in the encoded string at position: '{}'",
-                    problematic_part
-                ),
-            ));
-        }
+    if !current.is_empty() {
+        return Err(DictionaryError::InvalidFormat(format!("Invalid sequence at end: {}", current)));
     }
 
     Ok(result)
 }
 
+// Update existing functions to use the new dictionary-aware versions
+pub fn encoding_one(binary_string: &str) -> io::Result<String> {
+    encoding_one_with_dict(binary_string, &FIRST_DICT)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+}
+
+pub fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
+    decoding_one_with_dict(dot_string, &FIRST_DICT)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+}
+
 pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
-    if dot_string.is_empty() {
-        return Ok(String::new());
-    }
+    encoding_two_with_dict(dot_string, &SECOND_DICT)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+}
 
-    let mut result = String::new();
-    let mut chars = dot_string.chars().peekable();
-
-    while chars.peek().is_some() {
-        if *chars.peek().unwrap() == ' ' {
-            chars.next();
-            continue;
-        }
-
-        let mut matched = false;
-
-        let candidates = [".....", "....", "...", "..", ". .", "."];
-
-        for &pattern in &candidates {
-            if matches_pattern(&mut chars.clone(), pattern) {
-                if let Some(&symbol) = SECOND_DICT.get(pattern) {
-                    result.push(symbol);
-
-                    for _ in 0..pattern.chars().count() {
-                        chars.next();
-                    }
-
-                    matched = true;
-                    break;
-                }
-            }
-        }
-
-        if !matched {
-            let mut problematic_part = String::new();
-            let mut chars_clone = chars.clone();
-            for _ in 0..10 {
-                if let Some(c) = chars_clone.next() {
-                    problematic_part.push(c);
-                } else {
-                    break;
-                }
-            }
-
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Invalid or unknown dot pattern at position: '{}'",
-                    problematic_part
-                ),
-            ));
-        }
-    }
-
-    Ok(result)
+pub fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
+    decoding_two_with_dict(encoded_string, &SECOND_DICT)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
