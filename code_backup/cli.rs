@@ -6,8 +6,8 @@ use starknet::core::types::FieldElement;
 use std::path::Path;
 use std::time::Duration;
 use sha2::{Sha256, Digest};
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
+use std::fs::File;
+use std::io::Read;
 use crate::{encoding_one, encoding_two};
 
 /// Prints a styled error message
@@ -52,15 +52,19 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
         None => prompt_string("Enter the file path").await,
     };
 
-    // Validate the file path with async file operations
-    let path = std::path::Path::new(&file_path);
-    if !tokio::fs::metadata(&path).await.map(|m| m.is_file()).unwrap_or(false) {
-        print_error("Invalid file path", &format!("File does not exist or is not a file: {}", file_path));
+    // Validate the file path
+    if !std::path::Path::new(&file_path).exists() {
+        print_error("Invalid file path", &format!("File does not exist: {}", file_path));
         return;
     }
 
-    // Read file contents and generate hash asynchronously
-    let mut file = match File::open(&file_path).await {
+    if !std::path::Path::new(&file_path).is_file() {
+        print_error("Invalid file path", &format!("Path is not a file: {}", file_path));
+        return;
+    }
+
+    // Read file contents and generate hash
+    let mut file = match File::open(&file_path) {
         Ok(f) => f,
         Err(e) => {
             print_error("Failed to open file", &e);
@@ -70,7 +74,7 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
 
     let mut hasher = Sha256::new();
     let mut buffer = Vec::new();
-    if let Err(e) = file.read_to_end(&mut buffer).await {
+    if let Err(e) = file.read_to_end(&mut buffer) {
         print_error("Failed to read file", &e);
         return;
     }
