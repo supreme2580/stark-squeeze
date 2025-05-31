@@ -198,7 +198,7 @@ pub async fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-pub fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
+pub async fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
     // Handle empty input
     if dot_string.is_empty() {
         return Ok(String::new());
@@ -232,7 +232,7 @@ pub fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
     Ok(reconstructed_binary)
 }
 
-pub fn encoding_one(binary_string: &str) -> io::Result<String> {
+pub async fn encoding_one(binary_string: &str) -> io::Result<String> {
     // Handle empty string case
     if binary_string.is_empty() {
         return Ok(String::new());
@@ -281,7 +281,7 @@ pub fn encoding_one(binary_string: &str) -> io::Result<String> {
     Ok(result.concat())
 }
 
-pub fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
+pub async fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
     if encoded_string.is_empty() {
         return Ok(String::new());
     }
@@ -337,7 +337,7 @@ pub fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
     Ok(result)
 }
 
-pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
+pub async fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
     if dot_string.is_empty() {
         return Ok(String::new());
     }

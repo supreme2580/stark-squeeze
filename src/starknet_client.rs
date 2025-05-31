@@ -12,11 +12,13 @@ use dotenvy::dotenv;
 use indicatif::{ProgressBar, ProgressStyle};
 
 /// Loads an environment variable or returns an error.
+#[allow(dead_code)]
 fn get_env_var(name: &str) -> Result<String, Box<dyn Error>> {
     env::var(name).map_err(|_| format!("Environment variable `{}` is not set", name).into())
 }
 
 /// Parses a FieldElement from an environment variable.
+#[allow(dead_code)]
 fn get_env_felt(name: &str) -> Result<FieldElement, Box<dyn Error>> {
     let val = get_env_var(name)?;
     FieldElement::from_hex_be(&val).map_err(|e| format!("Invalid FieldElement in `{}`: {}", name, e).into())
@@ -146,7 +148,7 @@ pub async fn upload_data_with_progress(
     progress_bar.set_message("Uploading data to StarkNet...");
 
     // Simulate progress (replace with actual progress tracking if possible)
-    for i in 0..100 {
+    for _i in 0..100 {
         progress_bar.inc(1);
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
     }

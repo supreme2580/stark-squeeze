@@ -1,3 +1,4 @@
+extern crate stark_squeeze;
 use stark_squeeze::cli;
 use std::path::PathBuf;
 use tempfile::NamedTempFile;

@@ -37,6 +37,7 @@ async fn prompt_string(prompt: &str) -> String {
 }
 
 /// Validates that a string is not empty
+#[allow(dead_code)]
 fn validate_non_empty(input: &str, field_name: &str) -> Result<(), String> {
     if input.trim().is_empty() {
         return Err(format!("{} cannot be empty", field_name));
@@ -125,7 +126,7 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
 
     // First encoding step
     spinner.set_message("First encoding step...".yellow().to_string());
-    let encoded_one = match encoding_one(&binary_string) {
+    let encoded_one = match encoding_one(&binary_string).await {
         Ok(encoded) => encoded,
         Err(e) => {
             print_error("Failed in first encoding step", &e);
@@ -135,7 +136,7 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
 
     // Second encoding step
     spinner.set_message("Second encoding step...".yellow().to_string());
-    let encoded_two = match encoding_two(&encoded_one) {
+    let encoded_two = match encoding_two(&encoded_one).await {
         Ok(encoded) => encoded,
         Err(e) => {
             print_error("Failed in second encoding step", &e);
