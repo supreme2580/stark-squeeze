@@ -1978,6 +1978,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "starknet",
+ "tempfile",
  "tokio",
  "url",
 ]

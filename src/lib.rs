@@ -4,19 +4,20 @@ pub mod utils;
 pub mod cli;
 pub mod starknet_client;
 
-use std::fs::File;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::io::{self, BufWriter, Read, Write};
+use std::collections::HashMap;
+use std::io;
 use std::thread::sleep;
 use std::time::Duration;
-use std::collections::HashMap;
+use tokio::fs::File;
+use tokio::io::{self as tokio_io, AsyncReadExt, AsyncWriteExt, BufWriter};
 use utils::matches_pattern;
 use dictionary::{Dictionary, FIRST_DICT, SECOND_DICT, CustomDictionary, DictionaryError};
 
 
-pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
-    let file = File::open(file_path)?;
-    let metadata = file.metadata()?;
+pub async fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
+    let file = File::open(file_path).await?;
+    let metadata = file.metadata().await?;
     let total_size = metadata.len();
 
     let pb = ProgressBar::new(total_size);
@@ -26,12 +27,12 @@ pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
             .progress_chars("█▉▊▋▌▍▎▏ "),
     );
 
-    let mut reader = io::BufReader::new(file);
+    let mut reader = tokio_io::BufReader::new(file);
     let mut buffer = Vec::with_capacity(total_size as usize);
     let mut chunk = [0u8; 4096]; // 4KB chunk
 
     loop {
-        match reader.read(&mut chunk) {
+        match reader.read(&mut chunk).await {
             Ok(0) => break, // EOF
             Ok(n) => {
                 buffer.extend_from_slice(&chunk[..n]);
@@ -48,7 +49,7 @@ pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     Ok(buffer)
 }
 
-pub fn binary_to_file(
+pub async fn binary_to_file(
     input: &(impl AsRef<str> + ?Sized),
     output_path: Option<&str>,
 ) -> io::Result<()> {
@@ -61,11 +62,11 @@ pub fn binary_to_file(
     }
 
     let file_path = output_path.unwrap_or("output.bin");
-    let file = File::create(file_path)?;
+    let file = File::create(file_path).await?;
     let mut writer = BufWriter::new(file);
 
     let original_length = binary_string.len() as u16;
-    writer.write_all(&original_length.to_be_bytes())?;
+    writer.write_all(&original_length.to_be_bytes()).await?;
 
     let padded_binary_string = pad_binary_string(&binary_string);
     let total_chunks = padded_binary_string.len() / 8;
@@ -95,8 +96,8 @@ pub fn binary_to_file(
     }
 
     pb.set_message("Writing bytes to file...");
-    writer.write_all(&byte_buffer)?;
-    writer.flush()?;
+    writer.write_all(&byte_buffer).await?;
+    writer.flush().await?;
 
     pb.finish_with_message(format!("✅ File saved successfully to: {} 🎉", file_path));
     Ok(())
@@ -111,16 +112,16 @@ pub fn unpad_binary_string(padded: &str, original_length: usize) -> String {
     padded.chars().take(original_length).collect()
 }
 
-pub fn read_binary_file(file_path: &str) -> io::Result<String> {
-    let mut file = File::open(file_path)?;
+pub async fn read_binary_file(file_path: &str) -> io::Result<String> {
+    let mut file = File::open(file_path).await?;
     let mut length_bytes = [0u8; 2];
-    file.read_exact(&mut length_bytes)?;
+    file.read_exact(&mut length_bytes).await?;
     let original_length = u16::from_be_bytes(length_bytes) as usize;
     let mut binary_string = String::new();
     let mut byte_buffer = [0u8; 1];
 
     while binary_string.len() < original_length {
-        file.read_exact(&mut byte_buffer)?;
+        file.read_exact(&mut byte_buffer).await?;
         let byte_binary = format!("{:08b}", byte_buffer[0]);
         binary_string.push_str(&byte_binary);
     }
@@ -166,11 +167,11 @@ pub fn split_by_5(binary_string: &str) -> String {
     serde_json::json!(chunks).to_string()
 }
 
-pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
+pub async fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     let total_size = input.len();
     println!("🚀 Processing {} bytes...", total_size);
 
-    let file = File::create(output_path)?;
+    let file = File::create(output_path).await?;
     let mut writer = BufWriter::new(file);
 
     let pb = ProgressBar::new(total_size as u64);
@@ -181,7 +182,7 @@ pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     );
 
     for (i, chunk) in input.chunks(5).enumerate() {
-        writer.write_all(chunk)?;
+        writer.write_all(chunk).await?;
         pb.inc(chunk.len() as u64);
         pb.set_message(format!("Writing chunk {}/{}", i + 1, (total_size + 4) / 5));
 
@@ -191,10 +192,16 @@ pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
         }
     }
 
-    writer.flush()?;
+    writer.flush().await?;
     pb.finish_with_message("✅ Processing Complete! 🎉");
     println!("📁 File saved: {}", output_path);
     Ok(())
+}
+
+pub async fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
+    // Delegate to the dictionary-based implementation
+    decoding_one_with_dict(dot_string, &FIRST_DICT)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
 
 pub fn encoding_one_with_dict(binary_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
@@ -223,6 +230,13 @@ pub fn encoding_one_with_dict(binary_string: &str, dict: &impl Dictionary) -> Re
 
     Ok(result)
 }
+
+pub async fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
+    // Delegate to the dictionary-based implementation
+    decoding_two_with_dict(encoded_string, &SECOND_DICT)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+}
+
 
 pub fn decoding_one_with_dict(dot_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
     if dot_string.is_empty() {
@@ -271,6 +285,7 @@ pub fn encoding_two_with_dict(dot_string: &str, dict: &impl Dictionary) -> Resul
 }
 
 pub fn decoding_two_with_dict(encoded_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
+>>>>>>> 9ea8118fb3024c843d1873a3ac4dca7e2fa2b91f
     if encoded_string.is_empty() {
         return Ok(String::new());
     }
@@ -293,8 +308,14 @@ pub fn decoding_two_with_dict(encoded_string: &str, dict: &impl Dictionary) -> R
     Ok(result)
 }
 
-// Update existing functions to use the new dictionary-aware versions
-pub fn encoding_one(binary_string: &str) -> io::Result<String> {
+pub async fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
+    // Delegate to the dictionary-based implementation
+    encoding_two_with_dict(dot_string, &SECOND_DICT)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+}
+
+// Base implementation functions that use the dictionary-aware versions
+pub async fn encoding_one(binary_string: &str) -> io::Result<String> {
     encoding_one_with_dict(binary_string, &FIRST_DICT)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
@@ -312,4 +333,5 @@ pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
 pub fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
     decoding_two_with_dict(encoded_string, &SECOND_DICT)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+>>>>>>> 9ea8118fb3024c843d1873a3ac4dca7e2fa2b91f
 }
