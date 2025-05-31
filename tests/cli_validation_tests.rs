@@ -30,8 +30,6 @@ async fn test_upload_valid_file() {
     writeln!(tmp_file, "Test content for validation").unwrap();
     let file_path = tmp_file.path().to_path_buf();
     
-    // This might fail later in the process (e.g., when trying to connect to StarkNet)
-    // but it should pass the initial validation
     cli::upload_data_cli(Some(file_path)).await;
 }
 
@@ -58,7 +56,5 @@ async fn test_retrieve_valid_format_id() {
     // Test with a correctly formatted ID (may not exist on network, but format is valid)
     let valid_format_id = Some("0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string());
     
-    // This might fail later in the process (e.g., when trying to connect to StarkNet)
-    // but it should pass the initial validation
     cli::retrieve_data_cli(valid_format_id).await;
 }
