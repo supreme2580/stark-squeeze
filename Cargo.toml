@@ -26,3 +26,7 @@ dotenvy = "0.15"
 [dev-dependencies]
 tempfile = "3.8.0"
 
+[[example]]
+name = "ascii_conversion"
+path = "examples/ascii_conversion_example.rs"
+

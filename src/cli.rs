@@ -9,6 +9,7 @@ use sha2::{Sha256, Digest};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use crate::{encoding_one, encoding_two};
+use crate::ascii_converter::convert_file_to_ascii;
 
 /// Prints a styled error message
 fn print_error(context: &str, error: &dyn std::fmt::Display) {
@@ -75,9 +76,20 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
         print_error("Failed to read file", &e);
         return;
     }
-    hasher.update(&buffer);
+
+    // Convert to printable ASCII before hashing and compression
+    println!("\n🔄 Converting file to printable ASCII...");
+    let ascii_buffer = match convert_file_to_ascii(buffer) {
+        Ok(converted) => converted,
+        Err(e) => {
+            print_error("Failed to convert file to ASCII", &e);
+            return;
+        }
+    };
+
+    hasher.update(&ascii_buffer);
     let hash = hasher.finalize();
-    
+
     // Convert first 16 bytes of hash to FieldElement
     let upload_id = match FieldElement::from_byte_slice_be(&hash[..16]) {
         Ok(id) => id,
@@ -88,12 +100,12 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
     };
 
     // Automatically determine file size and type
-    let original_size = buffer.len() as u64;
+    let original_size = ascii_buffer.len() as u64;
     if original_size == 0 {
         print_error("Invalid file", &"File is empty");
         return;
     }
-    
+
     // Validate the file has a valid extension
     let file_type = match Path::new(&file_path).extension() {
         Some(ext) => {
@@ -119,8 +131,8 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
     );
     spinner.enable_steady_tick(Duration::from_millis(100));
 
-    // Convert file contents to binary string
-    let binary_string: String = buffer.iter()
+    // Convert ASCII buffer to binary string
+    let binary_string: String = ascii_buffer.iter()
         .map(|&byte| format!("{:08b}", byte))
         .collect();
 
@@ -179,21 +191,21 @@ pub async fn retrieve_data_cli(id_arg: Option<String>) {
             // Interactive mode - prompt for ID and validate
             loop {
                 let input = prompt_string("Enter the upload ID or hash").await;
-                
+
                 // Validate ID format before trying to convert
                 if !input.starts_with("0x") && input.len() != 66 {
-                    print_error("Invalid upload ID format", 
+                    print_error("Invalid upload ID format",
                         &format!("Expected 0x-prefixed 64-character hex string, got: {}", input));
                     continue;
                 }
-                
+
                 // Check for valid hex characters
                 if !input[2..].chars().all(|c| c.is_ascii_hexdigit()) {
-                    print_error("Invalid upload ID", 
+                    print_error("Invalid upload ID",
                         &format!("Upload ID contains non-hexadecimal characters: {}", input));
                     continue;
                 }
-                
+
                 match FieldElement::from_hex_be(&input) {
                     Ok(val) => break val,
                     Err(e) => print_error("Invalid hex input for upload ID", &e),
