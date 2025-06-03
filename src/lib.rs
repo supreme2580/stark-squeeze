@@ -4,6 +4,8 @@ pub mod utils;
 pub mod cli;
 pub mod starknet_client;
 
+pub mod progress;
+
 use std::fs::File;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::io::{self, BufWriter, Read, Write};
@@ -215,7 +217,7 @@ pub fn encoding_one_with_dict(binary_string: &str, dict: &impl Dictionary) -> Re
     let mut result = String::new();
     for chunk in chunks {
         if let Some(value) = dict.get(&chunk) {
-            result.push_str(value);
+            result.push_str(&value);
         } else {
             return Err(DictionaryError::InvalidFormat(format!("No mapping found for chunk: {}", chunk)));
         }
@@ -235,7 +237,7 @@ pub fn decoding_one_with_dict(dot_string: &str, dict: &impl Dictionary) -> Resul
     for c in dot_string.chars() {
         current.push(c);
         if let Some(value) = dict.get(&current) {
-            result.push_str(value);
+            result.push_str(&value);
             current.clear();
         }
     }
@@ -258,7 +260,7 @@ pub fn encoding_two_with_dict(dot_string: &str, dict: &impl Dictionary) -> Resul
     for c in dot_string.chars() {
         current.push(c);
         if let Some(value) = dict.get(&current) {
-            result.push_str(value);
+            result.push_str(&value);
             current.clear();
         }
     }
@@ -281,7 +283,7 @@ pub fn decoding_two_with_dict(encoded_string: &str, dict: &impl Dictionary) -> R
     for c in encoded_string.chars() {
         current.push(c);
         if let Some(value) = dict.get(&current) {
-            result.push_str(value);
+            result.push_str(&value);
             current.clear();
         }
     }
