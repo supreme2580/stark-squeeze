@@ -4,9 +4,10 @@ pub mod utils;
 pub mod cli;
 pub mod starknet_client;
 
+use std::fs;
 use std::fs::File;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::io::{self, BufWriter, Read, Write};
+use std::io::{self, BufWriter, Read, Write, BufReader};
 use std::thread::sleep;
 use std::time::Duration;
 use std::collections::HashMap;
@@ -14,26 +15,68 @@ use utils::matches_pattern;
 use dictionary::{Dictionary, FIRST_DICT, SECOND_DICT, CustomDictionary, DictionaryError};
 
 
-pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
-    let file = File::open(file_path)?;
+// # DEPRECATED pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
+//     let file = File::open(file_path)?;
+//     let metadata = file.metadata()?;
+//     let total_size = metadata.len();
+
+//     let pb = ProgressBar::new(total_size);
+//     pb.set_style(
+//         ProgressStyle::with_template("📦 [{bar:40.green/blue}] {percent}% ⏳ {bytes}/{total_bytes} read")
+//             .unwrap()
+//             .progress_chars("█▉▊▋▌▍▎▏ "),
+//     );
+
+//     let mut reader = io::BufReader::new(file);
+//     let mut buffer = Vec::with_capacity(total_size as usize);
+//     let mut chunk = [0u8; 4096]; // 4KB chunk
+
+//     loop {
+//         match reader.read(&mut chunk) {
+//             Ok(0) => break, // EOF
+//             Ok(n) => {
+//                 buffer.extend_from_slice(&chunk[..n]);
+//                 pb.inc(n as u64);
+//             }
+//             Err(e) => {
+//                 pb.finish_and_clear();
+//                 return Err(io::Error::new(io::ErrorKind::Other, format!("Read error: {}", e)));
+//             }
+//         }
+//     }
+
+//     pb.finish_with_message("✅ File loaded into memory! 🎉");
+//     Ok(buffer)
+// }
+
+pub fn file_to_ascii(input_file: &str) -> io::Result<String> {
+    let file = File::open(input_file)?;
     let metadata = file.metadata()?;
     let total_size = metadata.len();
 
     let pb = ProgressBar::new(total_size);
     pb.set_style(
-        ProgressStyle::with_template("📦 [{bar:40.green/blue}] {percent}% ⏳ {bytes}/{total_bytes} read")
+        ProgressStyle::with_template("📄 [{bar:40.green/blue}] {percent}% ⏳ {bytes}/{total_bytes} read")
             .unwrap()
             .progress_chars("█▉▊▋▌▍▎▏ "),
     );
 
     let mut reader = io::BufReader::new(file);
     let mut buffer = Vec::with_capacity(total_size as usize);
-    let mut chunk = [0u8; 4096]; // 4KB chunk
+    let mut chunk = [0u8; 4096];
 
     loop {
         match reader.read(&mut chunk) {
-            Ok(0) => break, // EOF
+            Ok(0) => break,
             Ok(n) => {
+                // Check for non-ASCII bytes in this chunk
+                if let Some((idx, &b)) = chunk[..n].iter().enumerate().find(|&(_, &b)| b > 126) {
+                    pb.finish_and_clear();
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Non-ASCII byte (value {}) found at offset {}", b, buffer.len() + idx),
+                    ));
+                }
                 buffer.extend_from_slice(&chunk[..n]);
                 pb.inc(n as u64);
             }
@@ -44,8 +87,9 @@ pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
         }
     }
 
-    pb.finish_with_message("✅ File loaded into memory! 🎉");
-    Ok(buffer)
+    pb.finish_with_message("✅ ASCII file loaded into memory! 🎉");
+    // Safety: All bytes are in 0-126, so this is valid ASCII.
+    Ok(buffer.iter().map(|&b| b as char).collect())
 }
 
 pub fn binary_to_file(
