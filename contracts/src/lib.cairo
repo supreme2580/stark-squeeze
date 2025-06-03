@@ -4,10 +4,7 @@
 pub trait IStarksqueeze<TContractState> {
     /// Processes file compression data and emits metadata for analytics and tracking.
     fn process_file_metadata(
-        ref self: TContractState,
-        data_size: usize,
-        file_type: felt252,
-        original_size: usize,
+        ref self: TContractState, data_size: usize, file_type: felt252, original_size: usize,
     );
 }
 
@@ -37,12 +34,13 @@ mod Starksqueeze {
     #[abi(embed_v0)]
     impl StarksqueezeImpl of super::IStarksqueeze<ContractState> {
         fn process_file_metadata(
-            ref self: ContractState,
-            data_size: usize,
-            file_type: felt252,
-            original_size: usize,
+            ref self: ContractState, data_size: usize, file_type: felt252, original_size: usize,
         ) {
-            let new_size = if data_size == 0 { 0 } else { data_size / 2 };
+            let new_size = if data_size == 0 {
+                0
+            } else {
+                data_size / 2
+            };
 
             let compression_ratio = if new_size == 0 {
                 0_u64
@@ -51,13 +49,12 @@ mod Starksqueeze {
                 ratio
             };
 
-            self.emit(CompressionMetadataEvent {
-                file_type,
-                size: data_size,
-                original_size,
-                new_size,
-                compression_ratio,
-            });
+            self
+                .emit(
+                    CompressionMetadataEvent {
+                        file_type, size: data_size, original_size, new_size, compression_ratio,
+                    },
+                );
         }
     }
 }

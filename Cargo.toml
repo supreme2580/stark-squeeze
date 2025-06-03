@@ -1,5 +1,5 @@
 [package]
-name = "stark-squeeze"
+name = "stark_squeeze"
 version = "0.1.0"
 edition = "2021"
 
@@ -22,6 +22,7 @@ tokio = { version = "1.0", features = ["full"] }
 
 # Hashing for upload IDs
 blake3 = "1.3"
+sha2 = "0.10"
 
 # URL utilities
 url = "2.5.4"
