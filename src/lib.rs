@@ -13,6 +13,79 @@ use std::collections::HashMap;
 use utils::matches_pattern;
 use dictionary::{Dictionary, FIRST_DICT, SECOND_DICT, CustomDictionary, DictionaryError};
 
+use std::fs::File;
+use std::io::{self, BufWriter, Write};
+use std::path::Path;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::fs;
+
+#[derive(Debug)]
+pub enum AsciiToFileError {
+    InvalidASCIIError(String),
+    FileIntegrityError(String),
+    IOError(io::Error),
+}
+
+impl From<io::Error> for AsciiToFileError {
+    fn from(err: io::Error) -> Self {
+        AsciiToFileError::IOError(err)
+    }
+}
+
+/// Compute a simple hash (using DefaultHasher) for file content
+fn compute_hash<P: AsRef<Path>>(path: P) -> io::Result<u64> {
+    let data = fs::read(path)?;
+    let mut hasher = DefaultHasher::new();
+    data.hash(&mut hasher);
+    Ok(hasher.finish())
+}
+
+/// Converts an ASCII string back to a binary file
+/// Ensures 1:1 byte correspondence (each ASCII char = 1 byte)
+/// Validates the content and ensures integrity post-write
+pub fn ascii_to_file(ascii_input: &str, output_path: &str) -> Result<(), AsciiToFileError> {
+    // Step 1: Validation - ensure all characters are within ASCII range (0-127)
+    if !ascii_input.chars().all(|c| c as u32 <= 127) {
+        return Err(AsciiToFileError::InvalidASCIIError(
+            "Input contains non-ASCII characters (code > 127)".to_string(),
+        ));
+    }
+
+    // Step 2: Convert ASCII chars to bytes
+    let bytes = ascii_input.as_bytes();
+
+    // Step 3: Write to file
+    let file = File::create(output_path)?;
+    let mut writer = BufWriter::new(file);
+    writer.write_all(bytes)?;
+    writer.flush()?;
+
+    // Step 4: Post-write validation
+    let written_data = fs::read(output_path)?;
+    if written_data.len() != ascii_input.len() {
+        return Err(AsciiToFileError::FileIntegrityError(
+            "File size mismatch after writing".to_string(),
+        ));
+    }
+
+    let original_hash = {
+        let mut hasher = DefaultHasher::new();
+        bytes.hash(&mut hasher);
+        hasher.finish()
+    };
+
+    let written_hash = compute_hash(output_path)?;
+
+    if original_hash != written_hash {
+        return Err(AsciiToFileError::FileIntegrityError(
+            "Hash mismatch detected after file write".to_string(),
+        ));
+    }
+
+    println!("✅ ASCII string successfully written to {} and verified.", output_path);
+    Ok(())
+}
 
 pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     let file = File::open(file_path)?;
