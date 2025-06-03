@@ -1,9 +1,7 @@
 use crate::starknet_client::{get_all_data, retrieve_data, upload_data};
-use clap::{App, Arg};
 use colored::*;
 use dialoguer::{Input, Select};
 use indicatif::{ProgressBar, ProgressStyle};
-use serde::Serialize;
 use starknet::core::types::FieldElement;
 use std::path::Path;
 use std::time::Duration;
@@ -17,10 +15,9 @@ fn print_error(context: &str, error: &dyn std::fmt::Display) {
     eprintln!("{} {}: {}", "Error".red().bold(), context, error);
 }
 
-fn print_info(label: &str, value: impl std::fmt::Display, json_output: bool) {
-    if !json_output {
-        println!("{} {}", label.blue().bold(), value);
-    }
+/// Prints a styled info message
+fn print_info(label: &str, value: impl std::fmt::Display) {
+    println!("{} {}", label.blue().bold(), value);
 }
 
 /// Prompts the user for string input with optional validation
@@ -34,19 +31,9 @@ async fn prompt_string(prompt: &str) -> String {
                 }
                 return value;
             },
-            Err(e) => {
-                eprintln!("{}: {}", "Failed to read input".red(), e);
-            }
+            Err(e) => print_error("Failed to read input", &e),
         }
     }
-}
-
-/// Validates that a string is not empty
-fn validate_non_empty(input: &str, field_name: &str) -> Result<(), String> {
-    if input.trim().is_empty() {
-        return Err(format!("{} cannot be empty", field_name));
-    }
-    Ok(())
 }
 
 /// Validates that a string is not empty
@@ -220,24 +207,15 @@ pub async fn retrieve_data_cli(id_arg: Option<String>) {
 
     match retrieve_data(upload_id).await {
         Ok((original_size, compressed_size, file_type, compression_ratio)) => {
-            if json_output {
-                let result = RetrievalResult {
-                    file_type,
-                    original_size,
-                    compressed_size,
-                    compression_ratio,
-                };
-                println!("{}", serde_json::to_string_pretty(&result).unwrap());
-            } else {
-                println!("{}", "Decoded binary status: Success".green().bold());
-                print_info("File Type:", file_type, false);
-                print_info("Original Size:", format!("{} bytes", original_size), false);
-                print_info("Compressed Size:", format!("{} bytes", compressed_size), false);
-                print_info("Compression Ratio:", format!("{}%", compression_ratio), false);
-            }
+            println!("{}", "Decoded binary status: Success".green().bold());
+            print_info("File Type:", file_type);
+            print_info("Original Size:", format!("{} bytes", original_size));
+            print_info("Compressed Size:", format!("{} bytes", compressed_size));
+            print_info("Compression Ratio:", format!("{}%", compression_ratio));
         }
         Err(e) => {
-            print_error("Failed to retrieve data", &e, json_output);
+            print_error("Failed to retrieve data", &e);
+            println!("Hint: Ensure the upload ID is correct and try again.");
         }
     }
 }
@@ -246,45 +224,28 @@ pub async fn retrieve_data_cli(id_arg: Option<String>) {
 pub async fn list_all_uploads() {
     match get_all_data().await {
         Ok(data) => {
-            if json_output {
-                let uploads = data
-                    .into_iter()
-                    .map(|(upload_id, file_type, compression_ratio)| UploadEntry {
-                        upload_id: format!("{:#x}", upload_id),
-                        file_type,
-                        compression_ratio,
-                    })
-                    .collect::<Vec<_>>();
-
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&ListResult { uploads }).unwrap()
-                );
+            if data.is_empty() {
+                println!("{}", "No uploads found.".yellow().bold());
             } else {
-                if data.is_empty() {
-                    println!("{}", "No uploads found.".yellow().bold());
-                } else {
-                    for (upload_id, file_type, compression_ratio) in data {
-                        print_info("ID:", upload_id, false);
-                        print_info("File Type:", file_type, false);
-                        print_info("Compression Ratio:", format!("{}%", compression_ratio), false);
-                        println!("{}", "---".dimmed());
-                    }
+                for (upload_id, file_type, compression_ratio) in data {
+                    print_info("ID:", upload_id);
+                    print_info("File Type:", file_type);
+                    print_info("Compression Ratio:", format!("{}%", compression_ratio));
+                    println!("{}", "---".dimmed());
                 }
             }
         }
         Err(e) => {
-            print_error("Failed to retrieve uploads", &e, json_output);
+            print_error("Failed to retrieve uploads", &e);
         }
     }
 }
 
-pub async fn main_menu(json_output: bool) {
+/// Displays the CLI menu and handles command routing
+pub async fn main_menu() {
     loop {
-        if !json_output {
-            println!("\n{}", "🚀 Welcome to StarkSqueeze CLI!".bold().cyan());
-            println!("{}", "Please choose an option:".bold());
-        }
+        println!("\n{}", "🚀 Welcome to StarkSqueeze CLI!".bold().cyan());
+        println!("{}", "Please choose an option:".bold());
 
         let options = vec!["Upload Data", "Retrieve Data", "Get All Data", "Exit"];
         let selection = match Select::new()
@@ -295,7 +256,7 @@ pub async fn main_menu(json_output: bool) {
         {
             Ok(sel) => sel,
             Err(e) => {
-                print_error("Selection failed", &e, json_output);
+                print_error("Selection failed", &e);
                 continue;
             }
         };
@@ -305,29 +266,10 @@ pub async fn main_menu(json_output: bool) {
             1 => retrieve_data_cli(None).await,
             2 => list_all_uploads().await,
             3 => {
-                if !json_output {
-                    println!("{}", "👋 Goodbye!".bold().green());
-                }
+                println!("{}", "👋 Goodbye!".bold().green());
                 break;
             }
             _ => unreachable!(),
         }
     }
-}
-
-#[tokio::main]
-async fn main() {
-    let matches = App::new("StarkSqueeze CLI")
-        .version("1.0")
-        .about("Efficient data compression & upload on StarkNet")
-        .arg(
-            Arg::new("json")
-                .long("json")
-                .help("Outputs results in JSON format")
-                .takes_value(false),
-        )
-        .get_matches();
-
-    let json_output = matches.is_present("json");
-    main_menu(json_output).await;
 }
