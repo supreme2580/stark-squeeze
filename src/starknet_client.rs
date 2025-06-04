@@ -38,7 +38,7 @@ pub async fn get_account() -> Result<SingleOwnerAccount<JsonRpcClient<HttpTransp
 
     let account_address = env::var("ACCOUNT_ADDRESS").map_err(|_| "ACCOUNT_ADDRESS not set in .env")?;
     let account_address = FieldElement::from_hex_be(&account_address)?;
-    
+
     let chain_id = env::var("CHAIN_ID").map_err(|_| "CHAIN_ID not set in .env")?;
     let chain_id = FieldElement::from_hex_be(&chain_id)?;
 
@@ -58,22 +58,22 @@ pub async fn upload_data(
     original_size: u64,
 ) -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
-    
+
     // Debug: Print environment variables
     println!("\nDebug Info:");
     println!("RPC_URL: {}", env::var("RPC_URL").unwrap_or_else(|_| "Not set".to_string()));
     println!("ACCOUNT_ADDRESS: {}", env::var("ACCOUNT_ADDRESS").unwrap_or_else(|_| "Not set".to_string()));
     println!("CONTRACT_ADDRESS: {}", env::var("CONTRACT_ADDRESS").unwrap_or_else(|_| "Not set".to_string()));
     println!("CHAIN_ID: {}", env::var("CHAIN_ID").unwrap_or_else(|_| "Not set".to_string()));
-    
+
     let account = get_account().await?;
     let contract_address = env::var("CONTRACT_ADDRESS").map_err(|_| "CONTRACT_ADDRESS not set in .env")?;
     let contract_address = FieldElement::from_hex_be(&contract_address)?;
-    
+
     println!("\nAccount Info:");
     println!("Account Address: 0x{:x}", account.address());
     println!("Contract Address: 0x{:x}", contract_address);
-    
+
     let file_type_felt = short_string_to_felt(file_type)?;
 
     println!("\nTransaction Data:");

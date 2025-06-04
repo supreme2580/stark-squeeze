@@ -1,5 +1,6 @@
 pub mod dictionary;
 pub mod utils;
+pub mod ascii_converter;
 
 pub mod cli;
 pub mod starknet_client;
@@ -13,6 +14,7 @@ use tokio::fs::File;
 use tokio::io::{self as tokio_io, AsyncReadExt, AsyncWriteExt, BufWriter};
 use utils::matches_pattern;
 use dictionary::{Dictionary, FIRST_DICT, SECOND_DICT, CustomDictionary, DictionaryError};
+use ascii_converter::convert_file_to_ascii;
 
 
 pub async fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
@@ -46,7 +48,11 @@ pub async fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     }
 
     pb.finish_with_message("✅ File loaded into memory! 🎉");
-    Ok(buffer)
+
+    println!("\n🔄 Converting file to printable ASCII...");
+    let ascii_buffer = convert_file_to_ascii(buffer)?;
+
+    Ok(ascii_buffer)
 }
 
 pub async fn binary_to_file(
@@ -126,7 +132,6 @@ pub async fn read_binary_file(file_path: &str) -> io::Result<String> {
         binary_string.push_str(&byte_binary);
     }
 
-    // Use unpad_binary_string to truncate to the original length
     Ok(unpad_binary_string(&binary_string, original_length))
 }
 pub fn split_by_5(binary_string: &str) -> String {
@@ -213,7 +218,10 @@ pub fn encoding_one_with_dict(binary_string: &str, dict: &impl Dictionary) -> Re
         return Err(DictionaryError::InvalidFormat("Input must be a binary string".to_string()));
     }
 
-    let chunks: Vec<String> = binary_string
+    let padded_length = ((binary_string.len() + 4) / 5) * 5;
+    let padded_binary = format!("{:0width$}", binary_string.parse::<u128>().unwrap_or(0), width = padded_length);
+
+    let chunks: Vec<String> = padded_binary
         .as_bytes()
         .chunks(5)
         .map(|chunk| String::from_utf8_lossy(chunk).to_string())
@@ -222,7 +230,7 @@ pub fn encoding_one_with_dict(binary_string: &str, dict: &impl Dictionary) -> Re
     let mut result = String::new();
     for chunk in chunks {
         if let Some(value) = dict.get(&chunk) {
-            result.push_str(value);
+            result.push_str(&value);
         } else {
             return Err(DictionaryError::InvalidFormat(format!("No mapping found for chunk: {}", chunk)));
         }
@@ -249,7 +257,7 @@ pub fn decoding_one_with_dict(dot_string: &str, dict: &impl Dictionary) -> Resul
     for c in dot_string.chars() {
         current.push(c);
         if let Some(value) = dict.get(&current) {
-            result.push_str(value);
+            result.push_str(&value);
             current.clear();
         }
     }
@@ -272,7 +280,7 @@ pub fn encoding_two_with_dict(dot_string: &str, dict: &impl Dictionary) -> Resul
     for c in dot_string.chars() {
         current.push(c);
         if let Some(value) = dict.get(&current) {
-            result.push_str(value);
+            result.push_str(&value);
             current.clear();
         }
     }
@@ -296,7 +304,7 @@ pub fn decoding_two_with_dict(encoded_string: &str, dict: &impl Dictionary) -> R
     for c in encoded_string.chars() {
         current.push(c);
         if let Some(value) = dict.get(&current) {
-            result.push_str(value);
+            result.push_str(&value);
             current.clear();
         }
     }
