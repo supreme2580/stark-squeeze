@@ -24,6 +24,18 @@ use std::path::Path;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::fs;
+use std::collections::HashSet;
+use thiserror::Error;
+
+/// ANSI color codes for rainbow bit highlighting
+const RAINBOW_COLORS: [&str; 5] = [
+    "\x1b[31m", // Red
+    "\x1b[33m", // Yellow
+    "\x1b[32m", // Green
+    "\x1b[36m", // Cyan
+    "\x1b[35m", // Magenta
+];
+const RESET_COLOR: &str = "\x1b[0m";
 
 #[derive(Debug)]
 pub enum AsciiToFileError {
@@ -36,6 +48,96 @@ impl From<io::Error> for AsciiToFileError {
     fn from(err: io::Error) -> Self {
         AsciiToFileError::IOError(err)
     }
+}
+
+/// Enhanced ASCII-to-Dot Visualization Function with Bit Numbering and Special Character Handling
+/// 
+/// # Arguments
+/// * `input_str` - The input string to visualize
+/// * `group_size` - Number of characters per group (default: 5)
+/// * `show_color` - Enable ANSI color codes for rainbow bit highlighting
+/// 
+/// # Returns
+/// A formatted string with detailed ASCII visualization
+pub fn ascii_to_dot(input_str: &str, group_size: Option<usize>, show_color: Option<bool>) -> String {
+    let group_size = group_size.unwrap_or(5);
+    let show_color = show_color.unwrap_or(false);
+    
+    if input_str.is_empty() {
+        return "Empty input string".to_string();
+    }
+    
+    let mut result = String::new();
+    
+    // Add bit numbering header
+    result.push_str("Bit: ");
+    for i in 0..5 {
+        if show_color {
+            result.push_str(&format!("{}{}{} ", RAINBOW_COLORS[i], i, RESET_COLOR));
+        } else {
+            result.push_str(&format!("{} ", i));
+        }
+    }
+    result.push_str("\n");
+    result.push_str("---------\n");
+    
+    // Process each character
+    for (idx, ch) in input_str.chars().enumerate() {
+        // Add group header
+        if idx % group_size == 0 {
+            if idx > 0 {
+                result.push('\n');
+            }
+            result.push_str(&format!("[Group {}]\n", (idx / group_size) + 1));
+        }
+        
+        let ascii_code = ch as u8;
+        
+        // Handle special characters
+        let char_display = match ch {
+            ' ' => "[SP]".to_string(),
+            '\0' => "[NUL]".to_string(),
+            c if c.is_control() => {
+                if ascii_code < 32 {
+                    format!("[CTRL+{}]", (ascii_code + 64) as char)
+                } else if ascii_code == 127 {
+                    "[DEL]".to_string()
+                } else {
+                    format!("[CTRL+{}]", c)
+                }
+            },
+            c => c.to_string(),
+        };
+        
+        // Generate 5-bit binary representation
+        let binary = format!("{:05b}", ascii_code);
+        let hex = format!("0x{:02X}", ascii_code);
+        
+        // Create dot visualization with bit positioning
+        let mut dot_viz = String::new();
+        for (bit_idx, bit_char) in binary.chars().enumerate() {
+            if bit_char == '1' {
+                if show_color {
+                    dot_viz.push_str(&format!("{}{}{}", RAINBOW_COLORS[bit_idx], char_display.chars().next().unwrap_or('.'), RESET_COLOR));
+                } else {
+                    dot_viz.push(char_display.chars().next().unwrap_or('.'));
+                }
+            } else {
+                dot_viz.push('.');
+            }
+        }
+        
+        // Format the complete line
+        result.push_str(&format!("{} {} [{}] = {} ({})\n", 
+            dot_viz, 
+            char_display, 
+            ascii_code, 
+            binary, 
+            hex
+        ));
+    }
+    
+    result
 }
 
 /// Compute a simple hash (using DefaultHasher) for file content
@@ -217,6 +319,7 @@ pub async fn read_binary_file(file_path: &str) -> io::Result<String> {
 
     Ok(unpad_binary_string(&binary_string, original_length))
 }
+
 pub fn split_by_5(binary_string: &str) -> String {
     if binary_string.is_empty() {
         return serde_json::json!([]).to_string();
@@ -328,7 +431,6 @@ pub async fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
 
-
 pub fn decoding_one_with_dict(dot_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
     if dot_string.is_empty() {
         return Ok(String::new());
@@ -376,7 +478,6 @@ pub fn encoding_two_with_dict(dot_string: &str, dict: &impl Dictionary) -> Resul
 }
 
 pub fn decoding_two_with_dict(encoded_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
->>>>>>> 9ea8118fb3024c843d1873a3ac4dca7e2fa2b91f
     if encoded_string.is_empty() {
         return Ok(String::new());
     }
@@ -424,7 +525,6 @@ pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
 pub fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
     decoding_two_with_dict(encoded_string, &SECOND_DICT)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
->>>>>>> 9ea8118fb3024c843d1873a3ac4dca7e2fa2b91f
 }
 
 #[derive(Debug, Error)]
@@ -498,7 +598,7 @@ mod tests {
     #[test]
     fn test_invalid_ascii() {
         let mut dict = make_valid_dict();
-        dict[0] = "abce".to_string();
+        dict[0] = "abce".to_string();
         let result = validate_ascii_dictionary(&dict);
         assert!(matches!(result, Err(DictionaryValidationError::InvalidASCIIError(_))));
     }
@@ -525,5 +625,64 @@ mod tests {
         dict.pop(); // remove one field => lose 5 characters
         let result = validate_ascii_dictionary(&dict);
         assert!(matches!(result, Err(DictionaryValidationError::MissingCharsError(_))));
+    }
+
+    // Tests for ascii_to_dot function
+    #[test]
+    fn test_ascii_to_dot_normal_characters() {
+        let result = ascii_to_dot("ABC", Some(5), Some(false));
+        assert!(result.contains("[Group 1]"));
+        assert!(result.contains("A [65] = 01000001"));
+        assert!(result.contains("B [66] = 01000010"));
+        assert!(result.contains("C [67] = 01000011"));
+    }
+
+    #[test]
+    fn test_ascii_to_dot_mixed_input_with_null() {
+        let result = ascii_to_dot("A\0 C", Some(5), Some(false));
+        assert!(result.contains("[NUL] [0]"));
+        assert!(result.contains("[SP] [32]"));
+    }
+
+    #[test]
+    fn test_ascii_to_dot_grouping() {
+        let result = ascii_to_dot("ABCDEFGH", Some(3), Some(false));
+        assert!(result.contains("[Group 1]"));
+        assert!(result.contains("[Group 2]"));
+        assert!(result.contains("[Group 3]"));
+    }
+
+    #[test]
+    fn test_ascii_to_dot_control_characters() {
+        let result = ascii_to_dot("\x01\x1F\x7F", Some(5), Some(false));
+        assert!(result.contains("[CTRL+A]"));
+        assert!(result.contains("[CTRL+_]"));
+        assert!(result.contains("[DEL]"));
+    }
+
+    #[test]
+    fn test_ascii_to_dot_empty_string() {
+        let result = ascii_to_dot("", None, None);
+        assert_eq!(result, "Empty input string");
+    }
+
+    #[test]
+iddu        let result = ascii_to_dot("A", Some(5), Some(true));
+        // Should contain ANSI escape codes
+        assert!(result.contains("\x1b["));
+    }
+
+    #[test]
+    fn test_ascii_to_dot_edge_case_127_chars() {
+        let test_string: String = (0..127).map(|i| (i as u8) as char).collect();
+        let result = ascii_to_dot(&test_string, Some(5), Some(false));
+        
+        // Should have multiple groups
+        assert!(result.contains("[Group 1]"));
+        assert!(result.contains("[Group 25]")); // 127/5 = 25.4, so 26 groups
+        
+        // Should handle all ASCII characters
+        assert!(result.contains("[NUL]")); // char 0
+        assert!(result.contains("[DEL]")); // char 127 if included
     }
 }
