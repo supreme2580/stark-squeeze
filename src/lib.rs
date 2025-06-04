@@ -5,9 +5,11 @@ pub mod ascii_converter;
 pub mod cli;
 pub mod starknet_client;
 
+use std::fs;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashMap;
 use std::io;
+use std::io::{self, BufWriter, Read, Write, BufReader};
 use std::thread::sleep;
 use std::time::Duration;
 use tokio::fs::File;
@@ -97,19 +99,27 @@ pub async fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
 
     let pb = ProgressBar::new(total_size);
     pb.set_style(
-        ProgressStyle::with_template("📦 [{bar:40.green/blue}] {percent}% ⏳ {bytes}/{total_bytes} read")
+        ProgressStyle::with_template("📄 [{bar:40.green/blue}] {percent}% ⏳ {bytes}/{total_bytes} read")
             .unwrap()
             .progress_chars("█▉▊▋▌▍▎▏ "),
     );
 
     let mut reader = tokio_io::BufReader::new(file);
     let mut buffer = Vec::with_capacity(total_size as usize);
-    let mut chunk = [0u8; 4096]; // 4KB chunk
+    let mut chunk = [0u8; 4096];
 
     loop {
         match reader.read(&mut chunk).await {
             Ok(0) => break, // EOF
             Ok(n) => {
+                // Check for non-ASCII bytes in this chunk
+                if let Some((idx, &b)) = chunk[..n].iter().enumerate().find(|&(_, &b)| b > 126) {
+                    pb.finish_and_clear();
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Non-ASCII byte (value {}) found at offset {}", b, buffer.len() + idx),
+                    ));
+                }
                 buffer.extend_from_slice(&chunk[..n]);
                 pb.inc(n as u64);
             }

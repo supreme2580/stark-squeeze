@@ -82,4 +82,36 @@ mod tests {
         assert!(encoding_two("...x").await.is_err());
         assert!(encoding_two("abc").await.is_err());
     }
+
+    #[test]
+    fn test_file_to_ascii_ascii_file() {
+        use std::fs::File;
+        use std::io::Write;
+        let test_path = "test_ascii.txt";
+        let content = "Hello, ASCII World! 12345";
+        let mut file = File::create(test_path).unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+
+        let ascii = crate::file_to_ascii(test_path).unwrap();
+        assert_eq!(ascii, content);
+
+        std::fs::remove_file(test_path).unwrap();
+    }
+
+    #[test]
+    fn test_file_to_ascii_non_ascii_file() {
+        use std::fs::File;
+        use std::io::Write;
+        let test_path = "test_non_ascii.txt";
+        let content = b"Hello\xFFWorld";
+        let mut file = File::create(test_path).unwrap();
+        file.write_all(content).unwrap();
+
+        let result = crate::file_to_ascii(test_path);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("Non-ASCII byte"));
+
+        std::fs::remove_file(test_path).unwrap();
+    }
 }
