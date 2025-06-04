@@ -1,6 +1,8 @@
 use stark_squeeze::cli;
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use std::collections::HashSet;
+use thiserror::Error;
 
 const APP_NAME: &str = "StarkSqueeze CLI";
 const APP_ABOUT: &str = "Interact with StarkSqueeze";
