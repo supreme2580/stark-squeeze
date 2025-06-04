@@ -1,5 +1,5 @@
 use stark_squeeze::cli;
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, error::ErrorKind};
 use std::path::PathBuf;
 
 const APP_NAME: &str = "StarkSqueeze CLI";
@@ -55,12 +55,12 @@ fn validate_upload_id(id: &str) -> Result<String, String> {
     if !id.starts_with("0x") && id.len() != 66 {
         return Err(format!("Invalid upload ID format. Expected 0x-prefixed 64-character hex string, got: {}", id));
     }
-
+    
     // Check if all characters after 0x are valid hex digits
     if !id[2..].chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(format!("Upload ID contains non-hexadecimal characters: {}", id));
     }
-
+    
     Ok(id.to_string())
 }
 

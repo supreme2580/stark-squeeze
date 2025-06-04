@@ -29,8 +29,8 @@ pub fn short_string_to_felt(text: &str) -> Result<FieldElement, Box<dyn std::err
     Ok(FieldElement::from(num))
 }
 
-pub fn file_to_binary(file_path: &str) -> std::io::Result<Vec<u8>> {
-    std::fs::read(file_path)
+pub async fn file_to_binary(file_path: &str) -> std::io::Result<Vec<u8>> {
+    tokio::fs::read(file_path).await
 }
 
 pub fn encoding_one(binary_string: &str) -> std::io::Result<String> {
