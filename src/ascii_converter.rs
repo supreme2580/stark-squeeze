@@ -11,7 +11,6 @@ use std::error::Error;
 const ASCII_PRINTABLE_START: u8 = 32;
 const ASCII_PRINTABLE_END: u8 = 126;
 
-// Special handling for common control characters
 const CHAR_MAPPINGS: &[(u8, u8)] = &[
     (0, b'0'),    // NULL → '0'
     (1, b'1'),    // SOH → '1'
@@ -34,12 +33,11 @@ const CHAR_MAPPINGS: &[(u8, u8)] = &[
     (127, b'D'),  // DEL → 'D'
 ];
 
-// Structure to track conversion statistics
 #[derive(Debug, Default)]
 pub struct ConversionStats {
     pub total_bytes: usize,
     pub converted_bytes: usize,
-    pub character_map: HashMap<u8, usize>, // Maps original char to count
+    pub character_map: HashMap<u8, usize>,
 }
 
 impl ConversionStats {
@@ -81,47 +79,37 @@ impl ConversionStats {
     }
 }
 
-// Convert a single byte to printable ASCII
 fn convert_byte_to_ascii(byte: u8, stats: &mut ConversionStats) -> u8 {
     if byte >= ASCII_PRINTABLE_START && byte <= ASCII_PRINTABLE_END {
-        // Already printable
         return byte;
     }
 
-    // Track conversion
     stats.converted_bytes += 1;
     *stats.character_map.entry(byte).or_insert(0) += 1;
 
-    // Check special mappings first
     for &(from, to) in CHAR_MAPPINGS {
         if byte == from {
             return to;
         }
     }
 
-    // For extended ASCII (128-255), map to printable range using modulo
     if byte > 127 {
-        // Map to range 48-122 (0-9, A-Z, a-z)
         let mapped = 48 + (byte - 128) % 75;
         return mapped;
     }
 
-    // For remaining control characters (16-26, 28-31), map to letters
     match byte {
-        16..=26 => b'A' + (byte - 16),  // DLE-SUB → A-K
-        28..=31 => b'L' + (byte - 28),  // FS-US → L-O
-        _ => b'?', // Fallback (should not happen with above logic)
+        16..=26 => b'A' + (byte - 16),
+        28..=31 => b'L' + (byte - 28),
+        _ => b'?',
     }
 }
 
-// Main conversion function
 pub fn convert_to_printable_ascii(data: &[u8]) -> Result<(Vec<u8>, ConversionStats), Box<dyn Error>> {
     let mut stats = ConversionStats {
         total_bytes: data.len(),
         ..Default::default()
     };
-
-    // Pre-allocate result vector for efficiency
     let mut result = Vec::with_capacity(data.len());
 
     // Convert each byte
@@ -137,8 +125,6 @@ pub fn convert_file_to_ascii(file_data: Vec<u8>) -> io::Result<Vec<u8>> {
     use indicatif::{ProgressBar, ProgressStyle};
 
     let total_size = file_data.len();
-
-    // Create progress bar for conversion
     let pb = ProgressBar::new(total_size as u64);
     pb.set_style(
         ProgressStyle::with_template("🔤 [{bar:40.cyan/blue}] {percent}% ⏳ Converting to ASCII...")
@@ -146,8 +132,7 @@ pub fn convert_file_to_ascii(file_data: Vec<u8>) -> io::Result<Vec<u8>> {
             .progress_chars("█▉▊▋▌▍▎▏ "),
     );
 
-    // Process in chunks for progress updates
-    let chunk_size = 8192; // 8KB chunks
+    let chunk_size = 8192;
     let mut result = Vec::with_capacity(total_size);
     let mut stats = ConversionStats {
         total_bytes: total_size,
@@ -162,14 +147,11 @@ pub fn convert_file_to_ascii(file_data: Vec<u8>) -> io::Result<Vec<u8>> {
     }
 
     pb.finish_with_message("✅ ASCII conversion complete!");
-
-    // Log conversion statistics
     stats.log_summary();
 
     Ok(result)
 }
 
-// Validation function to ensure data contains only printable ASCII
 pub fn validate_printable_ascii(data: &[u8]) -> Result<(), String> {
     for (i, &byte) in data.iter().enumerate() {
         if byte < ASCII_PRINTABLE_START || byte > ASCII_PRINTABLE_END {
