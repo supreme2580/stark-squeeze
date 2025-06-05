@@ -75,7 +75,7 @@ impl From<io::Error> for DictionaryError {
 }
 
 pub trait Dictionary {
-    fn get(&self, key: &str) -> Option<&str>;
+    fn get(&self, key: &str) -> Option<String>;
     fn contains_key(&self, key: &str) -> bool;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool;
@@ -125,8 +125,8 @@ impl CustomDictionary {
 }
 
 impl Dictionary for CustomDictionary {
-    fn get(&self, key: &str) -> Option<&str> {
-        self.map.get(key).map(|s| s.as_str())
+    fn get(&self, key: &str) -> Option<String> {
+        self.map.get(key).cloned()
     }
 
     fn contains_key(&self, key: &str) -> bool {
@@ -143,8 +143,8 @@ impl Dictionary for CustomDictionary {
 }
 
 impl Dictionary for phf::Map<&'static str, &'static str> {
-    fn get(&self, key: &str) -> Option<&str> {
-        self.get(key).copied()
+    fn get(&self, key: &str) -> Option<String> {
+        self.get(key).map(|s| s.to_string())
     }
 
     fn contains_key(&self, key: &str) -> bool {
@@ -161,8 +161,8 @@ impl Dictionary for phf::Map<&'static str, &'static str> {
 }
 
 impl Dictionary for phf::Map<&'static str, char> {
-    fn get(&self, key: &str) -> Option<&str> {
-        self.get(key).map(|c| std::str::from_utf8(&[*c as u8]).unwrap())
+    fn get(&self, key: &str) -> Option<String> {
+        self.get(key).map(|c| c.to_string())
     }
 
     fn contains_key(&self, key: &str) -> bool {

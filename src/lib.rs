@@ -1,41 +1,125 @@
 pub mod dictionary;
 pub mod utils;
+pub mod ascii_converter;
 
 pub mod cli;
 pub mod starknet_client;
 
-pub mod progress;
-
-use std::fs::File;
+use std::fs;
 use indicatif::{ProgressBar, ProgressStyle};
-use std::io::{self, BufWriter, Read, Write};
+use std::collections::HashMap;
+use std::io;
+use std::io::{self, BufWriter, Read, Write, BufReader};
 use std::thread::sleep;
 use std::time::Duration;
-use std::collections::HashMap;
+use tokio::fs::File;
+use tokio::io::{self as tokio_io, AsyncReadExt, AsyncWriteExt, BufWriter};
 use utils::matches_pattern;
 use dictionary::{Dictionary, FIRST_DICT, SECOND_DICT, CustomDictionary, DictionaryError};
+use ascii_converter::convert_file_to_ascii;
 
+use std::fs::File;
+use std::io::{self, BufWriter, Write};
+use std::path::Path;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::fs;
 
-pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
-    let file = File::open(file_path)?;
-    let metadata = file.metadata()?;
+#[derive(Debug)]
+pub enum AsciiToFileError {
+    InvalidASCIIError(String),
+    FileIntegrityError(String),
+    IOError(io::Error),
+}
+
+impl From<io::Error> for AsciiToFileError {
+    fn from(err: io::Error) -> Self {
+        AsciiToFileError::IOError(err)
+    }
+}
+
+/// Compute a simple hash (using DefaultHasher) for file content
+fn compute_hash<P: AsRef<Path>>(path: P) -> io::Result<u64> {
+    let data = fs::read(path)?;
+    let mut hasher = DefaultHasher::new();
+    data.hash(&mut hasher);
+    Ok(hasher.finish())
+}
+
+/// Converts an ASCII string back to a binary file
+/// Ensures 1:1 byte correspondence (each ASCII char = 1 byte)
+/// Validates the content and ensures integrity post-write
+pub fn ascii_to_file(ascii_input: &str, output_path: &str) -> Result<(), AsciiToFileError> {
+    // Step 1: Validation - ensure all characters are within ASCII range (0-127)
+    if !ascii_input.chars().all(|c| c as u32 <= 127) {
+        return Err(AsciiToFileError::InvalidASCIIError(
+            "Input contains non-ASCII characters (code > 127)".to_string(),
+        ));
+    }
+
+    // Step 2: Convert ASCII chars to bytes
+    let bytes = ascii_input.as_bytes();
+
+    // Step 3: Write to file
+    let file = File::create(output_path)?;
+    let mut writer = BufWriter::new(file);
+    writer.write_all(bytes)?;
+    writer.flush()?;
+
+    // Step 4: Post-write validation
+    let written_data = fs::read(output_path)?;
+    if written_data.len() != ascii_input.len() {
+        return Err(AsciiToFileError::FileIntegrityError(
+            "File size mismatch after writing".to_string(),
+        ));
+    }
+
+    let original_hash = {
+        let mut hasher = DefaultHasher::new();
+        bytes.hash(&mut hasher);
+        hasher.finish()
+    };
+
+    let written_hash = compute_hash(output_path)?;
+
+    if original_hash != written_hash {
+        return Err(AsciiToFileError::FileIntegrityError(
+            "Hash mismatch detected after file write".to_string(),
+        ));
+    }
+
+    println!("✅ ASCII string successfully written to {} and verified.", output_path);
+    Ok(())
+}
+
+pub async fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
+    let file = File::open(file_path).await?;
+    let metadata = file.metadata().await?;
     let total_size = metadata.len();
 
     let pb = ProgressBar::new(total_size);
     pb.set_style(
-        ProgressStyle::with_template("📦 [{bar:40.green/blue}] {percent}% ⏳ {bytes}/{total_bytes} read")
+        ProgressStyle::with_template("📄 [{bar:40.green/blue}] {percent}% ⏳ {bytes}/{total_bytes} read")
             .unwrap()
             .progress_chars("█▉▊▋▌▍▎▏ "),
     );
 
-    let mut reader = io::BufReader::new(file);
+    let mut reader = tokio_io::BufReader::new(file);
     let mut buffer = Vec::with_capacity(total_size as usize);
-    let mut chunk = [0u8; 4096]; // 4KB chunk
+    let mut chunk = [0u8; 4096];
 
     loop {
-        match reader.read(&mut chunk) {
+        match reader.read(&mut chunk).await {
             Ok(0) => break, // EOF
             Ok(n) => {
+                // Check for non-ASCII bytes in this chunk
+                if let Some((idx, &b)) = chunk[..n].iter().enumerate().find(|&(_, &b)| b > 126) {
+                    pb.finish_and_clear();
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Non-ASCII byte (value {}) found at offset {}", b, buffer.len() + idx),
+                    ));
+                }
                 buffer.extend_from_slice(&chunk[..n]);
                 pb.inc(n as u64);
             }
@@ -47,10 +131,14 @@ pub fn file_to_binary(file_path: &str) -> io::Result<Vec<u8>> {
     }
 
     pb.finish_with_message("✅ File loaded into memory! 🎉");
-    Ok(buffer)
+
+    println!("\n🔄 Converting file to printable ASCII...");
+    let ascii_buffer = convert_file_to_ascii(buffer)?;
+
+    Ok(ascii_buffer)
 }
 
-pub fn binary_to_file(
+pub async fn binary_to_file(
     input: &(impl AsRef<str> + ?Sized),
     output_path: Option<&str>,
 ) -> io::Result<()> {
@@ -63,11 +151,11 @@ pub fn binary_to_file(
     }
 
     let file_path = output_path.unwrap_or("output.bin");
-    let file = File::create(file_path)?;
+    let file = File::create(file_path).await?;
     let mut writer = BufWriter::new(file);
 
     let original_length = binary_string.len() as u16;
-    writer.write_all(&original_length.to_be_bytes())?;
+    writer.write_all(&original_length.to_be_bytes()).await?;
 
     let padded_binary_string = pad_binary_string(&binary_string);
     let total_chunks = padded_binary_string.len() / 8;
@@ -97,8 +185,8 @@ pub fn binary_to_file(
     }
 
     pb.set_message("Writing bytes to file...");
-    writer.write_all(&byte_buffer)?;
-    writer.flush()?;
+    writer.write_all(&byte_buffer).await?;
+    writer.flush().await?;
 
     pb.finish_with_message(format!("✅ File saved successfully to: {} 🎉", file_path));
     Ok(())
@@ -113,21 +201,20 @@ pub fn unpad_binary_string(padded: &str, original_length: usize) -> String {
     padded.chars().take(original_length).collect()
 }
 
-pub fn read_binary_file(file_path: &str) -> io::Result<String> {
-    let mut file = File::open(file_path)?;
+pub async fn read_binary_file(file_path: &str) -> io::Result<String> {
+    let mut file = File::open(file_path).await?;
     let mut length_bytes = [0u8; 2];
-    file.read_exact(&mut length_bytes)?;
+    file.read_exact(&mut length_bytes).await?;
     let original_length = u16::from_be_bytes(length_bytes) as usize;
     let mut binary_string = String::new();
     let mut byte_buffer = [0u8; 1];
 
     while binary_string.len() < original_length {
-        file.read_exact(&mut byte_buffer)?;
+        file.read_exact(&mut byte_buffer).await?;
         let byte_binary = format!("{:08b}", byte_buffer[0]);
         binary_string.push_str(&byte_binary);
     }
 
-    // Use unpad_binary_string to truncate to the original length
     Ok(unpad_binary_string(&binary_string, original_length))
 }
 pub fn split_by_5(binary_string: &str) -> String {
@@ -168,11 +255,11 @@ pub fn split_by_5(binary_string: &str) -> String {
     serde_json::json!(chunks).to_string()
 }
 
-pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
+pub async fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     let total_size = input.len();
     println!("🚀 Processing {} bytes...", total_size);
 
-    let file = File::create(output_path)?;
+    let file = File::create(output_path).await?;
     let mut writer = BufWriter::new(file);
 
     let pb = ProgressBar::new(total_size as u64);
@@ -183,7 +270,7 @@ pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     );
 
     for (i, chunk) in input.chunks(5).enumerate() {
-        writer.write_all(chunk)?;
+        writer.write_all(chunk).await?;
         pb.inc(chunk.len() as u64);
         pb.set_message(format!("Writing chunk {}/{}", i + 1, (total_size + 4) / 5));
 
@@ -193,10 +280,16 @@ pub fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
         }
     }
 
-    writer.flush()?;
+    writer.flush().await?;
     pb.finish_with_message("✅ Processing Complete! 🎉");
     println!("📁 File saved: {}", output_path);
     Ok(())
+}
+
+pub async fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
+    // Delegate to the dictionary-based implementation
+    decoding_one_with_dict(dot_string, &FIRST_DICT)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
 
 pub fn encoding_one_with_dict(binary_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
@@ -208,7 +301,10 @@ pub fn encoding_one_with_dict(binary_string: &str, dict: &impl Dictionary) -> Re
         return Err(DictionaryError::InvalidFormat("Input must be a binary string".to_string()));
     }
 
-    let chunks: Vec<String> = binary_string
+    let padded_length = ((binary_string.len() + 4) / 5) * 5;
+    let padded_binary = format!("{:0width$}", binary_string.parse::<u128>().unwrap_or(0), width = padded_length);
+
+    let chunks: Vec<String> = padded_binary
         .as_bytes()
         .chunks(5)
         .map(|chunk| String::from_utf8_lossy(chunk).to_string())
@@ -225,6 +321,13 @@ pub fn encoding_one_with_dict(binary_string: &str, dict: &impl Dictionary) -> Re
 
     Ok(result)
 }
+
+pub async fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
+    // Delegate to the dictionary-based implementation
+    decoding_two_with_dict(encoded_string, &SECOND_DICT)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+}
+
 
 pub fn decoding_one_with_dict(dot_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
     if dot_string.is_empty() {
@@ -273,6 +376,7 @@ pub fn encoding_two_with_dict(dot_string: &str, dict: &impl Dictionary) -> Resul
 }
 
 pub fn decoding_two_with_dict(encoded_string: &str, dict: &impl Dictionary) -> Result<String, DictionaryError> {
+>>>>>>> 9ea8118fb3024c843d1873a3ac4dca7e2fa2b91f
     if encoded_string.is_empty() {
         return Ok(String::new());
     }
@@ -295,8 +399,14 @@ pub fn decoding_two_with_dict(encoded_string: &str, dict: &impl Dictionary) -> R
     Ok(result)
 }
 
-// Update existing functions to use the new dictionary-aware versions
-pub fn encoding_one(binary_string: &str) -> io::Result<String> {
+pub async fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
+    // Delegate to the dictionary-based implementation
+    encoding_two_with_dict(dot_string, &SECOND_DICT)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+}
+
+// Base implementation functions that use the dictionary-aware versions
+pub async fn encoding_one(binary_string: &str) -> io::Result<String> {
     encoding_one_with_dict(binary_string, &FIRST_DICT)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
@@ -314,4 +424,106 @@ pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
 pub fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
     decoding_two_with_dict(encoded_string, &SECOND_DICT)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
+>>>>>>> 9ea8118fb3024c843d1873a3ac4dca7e2fa2b91f
+}
+
+#[derive(Debug, Error)]
+pub enum DictionaryValidationError {
+    #[error("Field contains invalid ASCII characters: {0}")]
+    InvalidASCIIError(String),
+
+    #[error("Field has incorrect length (must be 5): {0}")]
+    LengthMismatchError(String),
+
+    #[error("Duplicate entry found: {0}")]
+    DuplicateEntryError(String),
+
+    #[error("Dictionary missing ASCII characters: {0:?}")]
+    MissingCharsError(Vec<char>),
+}
+
+pub fn validate_ascii_dictionary(dict_array: &[String]) -> Result<(), DictionaryValidationError> {
+    let mut seen = HashSet::new();
+    let mut all_chars = HashSet::new();
+
+    for field in dict_array {
+        // Length check
+        if field.len() != 5 {
+            return Err(DictionaryValidationError::LengthMismatchError(field.clone()));
+        }
+
+        for ch in field.chars() {
+            // ASCII check
+            if !(0..=126).contains(&(ch as u8)) {
+                return Err(DictionaryValidationError::InvalidASCIIError(field.clone()));
+            }
+            all_chars.insert(ch);
+        }
+
+        // Duplicate check
+        if !seen.insert(field.clone()) {
+            return Err(DictionaryValidationError::DuplicateEntryError(field.clone()));
+        }
+    }
+
+    // Coverage check
+    let expected_chars: HashSet<char> = (0..=126).map(|c| c as u8 as char).collect();
+    let missing: Vec<char> = expected_chars.difference(&all_chars).cloned().collect();
+
+    if !missing.is_empty() {
+        return Err(DictionaryValidationError::MissingCharsError(missing));
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_valid_dict() -> Vec<String> {
+        let chars: Vec<char> = (0..=126).map(|c| c as u8 as char).collect();
+        chars
+            .chunks(5)
+            .map(|chunk| chunk.iter().collect())
+            .collect()
+    }
+
+    #[test]
+    fn test_valid_dictionary() {
+        let dict = make_valid_dict();
+        assert!(validate_ascii_dictionary(&dict).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_ascii() {
+        let mut dict = make_valid_dict();
+        dict[0] = "abce".to_string();
+        let result = validate_ascii_dictionary(&dict);
+        assert!(matches!(result, Err(DictionaryValidationError::InvalidASCIIError(_))));
+    }
+
+    #[test]
+    fn test_length_mismatch() {
+        let mut dict = make_valid_dict();
+        dict[0] = "abcd".to_string(); // only 4 characters
+        let result = validate_ascii_dictionary(&dict);
+        assert!(matches!(result, Err(DictionaryValidationError::LengthMismatchError(_))));
+    }
+
+    #[test]
+    fn test_duplicate_entry() {
+        let mut dict = make_valid_dict();
+        dict[1] = dict[0].clone();
+        let result = validate_ascii_dictionary(&dict);
+        assert!(matches!(result, Err(DictionaryValidationError::DuplicateEntryError(_))));
+    }
+
+    #[test]
+    fn test_missing_characters() {
+        let mut dict = make_valid_dict();
+        dict.pop(); // remove one field => lose 5 characters
+        let result = validate_ascii_dictionary(&dict);
+        assert!(matches!(result, Err(DictionaryValidationError::MissingCharsError(_))));
+    }
 }

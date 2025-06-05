@@ -6,10 +6,9 @@ use starknet::core::types::FieldElement;
 use std::path::Path;
 use std::time::Duration;
 use sha2::{Sha256, Digest};
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
+use std::fs::File;
+use std::io::Read;
 use crate::{encoding_one, encoding_two};
-use crate::ascii_converter::convert_file_to_ascii;
 
 /// Prints a styled error message
 fn print_error(context: &str, error: &dyn std::fmt::Display) {
@@ -38,7 +37,6 @@ async fn prompt_string(prompt: &str) -> String {
 }
 
 /// Validates that a string is not empty
-#[allow(dead_code)]
 fn validate_non_empty(input: &str, field_name: &str) -> Result<(), String> {
     if input.trim().is_empty() {
         return Err(format!("{} cannot be empty", field_name));
@@ -54,15 +52,19 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
         None => prompt_string("Enter the file path").await,
     };
 
-    // Validate the file path with async file operations
-    let path = std::path::Path::new(&file_path);
-    if !tokio::fs::metadata(&path).await.map(|m| m.is_file()).unwrap_or(false) {
-        print_error("Invalid file path", &format!("File does not exist or is not a file: {}", file_path));
+    // Validate the file path
+    if !std::path::Path::new(&file_path).exists() {
+        print_error("Invalid file path", &format!("File does not exist: {}", file_path));
         return;
     }
 
-    // Read file contents and generate hash asynchronously
-    let mut file = match File::open(&file_path).await {
+    if !std::path::Path::new(&file_path).is_file() {
+        print_error("Invalid file path", &format!("Path is not a file: {}", file_path));
+        return;
+    }
+
+    // Read file contents and generate hash
+    let mut file = match File::open(&file_path) {
         Ok(f) => f,
         Err(e) => {
             print_error("Failed to open file", &e);
@@ -72,24 +74,13 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
 
     let mut hasher = Sha256::new();
     let mut buffer = Vec::new();
-    if let Err(e) = file.read_to_end(&mut buffer).await {
+    if let Err(e) = file.read_to_end(&mut buffer) {
         print_error("Failed to read file", &e);
         return;
     }
-
-    // Convert to printable ASCII before hashing and compression
-    println!("\n🔄 Converting file to printable ASCII...");
-    let ascii_buffer = match convert_file_to_ascii(buffer) {
-        Ok(converted) => converted,
-        Err(e) => {
-            print_error("Failed to convert file to ASCII", &e);
-            return;
-        }
-    };
-
-    hasher.update(&ascii_buffer);
+    hasher.update(&buffer);
     let hash = hasher.finalize();
-
+    
     // Convert first 16 bytes of hash to FieldElement
     let upload_id = match FieldElement::from_byte_slice_be(&hash[..16]) {
         Ok(id) => id,
@@ -100,12 +91,12 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
     };
 
     // Automatically determine file size and type
-    let original_size = ascii_buffer.len() as u64;
+    let original_size = buffer.len() as u64;
     if original_size == 0 {
         print_error("Invalid file", &"File is empty");
         return;
     }
-
+    
     // Validate the file has a valid extension
     let file_type = match Path::new(&file_path).extension() {
         Some(ext) => {
@@ -131,14 +122,14 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
     );
     spinner.enable_steady_tick(Duration::from_millis(100));
 
-    // Convert ASCII buffer to binary string
-    let binary_string: String = ascii_buffer.iter()
+    // Convert file contents to binary string
+    let binary_string: String = buffer.iter()
         .map(|&byte| format!("{:08b}", byte))
         .collect();
 
     // First encoding step
     spinner.set_message("First encoding step...".yellow().to_string());
-    let encoded_one = match encoding_one(&binary_string).await {
+    let encoded_one = match encoding_one(&binary_string) {
         Ok(encoded) => encoded,
         Err(e) => {
             print_error("Failed in first encoding step", &e);
@@ -148,7 +139,7 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
 
     // Second encoding step
     spinner.set_message("Second encoding step...".yellow().to_string());
-    let encoded_two = match encoding_two(&encoded_one).await {
+    let encoded_two = match encoding_two(&encoded_one) {
         Ok(encoded) => encoded,
         Err(e) => {
             print_error("Failed in second encoding step", &e);
@@ -191,21 +182,21 @@ pub async fn retrieve_data_cli(id_arg: Option<String>) {
             // Interactive mode - prompt for ID and validate
             loop {
                 let input = prompt_string("Enter the upload ID or hash").await;
-
+                
                 // Validate ID format before trying to convert
                 if !input.starts_with("0x") && input.len() != 66 {
-                    print_error("Invalid upload ID format",
+                    print_error("Invalid upload ID format", 
                         &format!("Expected 0x-prefixed 64-character hex string, got: {}", input));
                     continue;
                 }
-
+                
                 // Check for valid hex characters
                 if !input[2..].chars().all(|c| c.is_ascii_hexdigit()) {
-                    print_error("Invalid upload ID",
+                    print_error("Invalid upload ID", 
                         &format!("Upload ID contains non-hexadecimal characters: {}", input));
                     continue;
                 }
-
+                
                 match FieldElement::from_hex_be(&input) {
                     Ok(val) => break val,
                     Err(e) => print_error("Invalid hex input for upload ID", &e),
