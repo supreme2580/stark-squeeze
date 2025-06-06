@@ -1,5 +1,5 @@
 use stark_squeeze::cli;
-use clap::{Parser, Subcommand, error::ErrorKind};
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::fs::{self, OpenOptions};
 use std::io::{BufWriter, Write, Read};
@@ -7,6 +7,8 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use sha2::{Sha256, Digest};
 use hex;
+use std::collections::HashSet;
+use thiserror::Error;
 
 const APP_NAME: &str = "StarkSqueeze CLI";
 const APP_ABOUT: &str = "Interact with StarkSqueeze";
@@ -63,6 +65,8 @@ fn validate_upload_id(id: &str) -> Result<String, String> {
     if !id.starts_with("0x") && id.len() != 66 {
         return Err(format!("Invalid upload ID format. Expected 0x-prefixed 64-character hex string, got: {}", id));
     }
+
+    // Check if all characters after 0x are valid hex digits
     if !id[2..].chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(format!("Upload ID contains non-hexadecimal characters: {}", id));
     }
