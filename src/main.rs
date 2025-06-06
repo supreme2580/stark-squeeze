@@ -213,4 +213,56 @@ async fn main() {
         },
         None => cli::main_menu().await,
     }
+}use std::time::{Instant, Duration};
+
+#[cfg(target_os = "linux")]
+fn current_rss_bytes() -> u64 {
+    // Read resident-set size from /proc/self/statm (page-count * 4 kB)
+    std::fs::read_to_string("/proc/self/statm")
+        .ok()
+        .and_then(|s| s.split_whitespace().nth(1)?.parse::<u64>().ok())
+        .unwrap_or(0) * 4_096
 }
+
+#[cfg(not(target_os = "linux"))]
+fn current_rss_bytes() -> u64 {
+    0 // best-effort fallback – extend with `sysinfo` for mac/win if needed
+}
+
+/// A very light, zero-alloc memory profiler.
+pub struct MemProfiler {
+    label:   &'static str,
+    t0:      Instant,
+    rss0:    u64,
+    printed: bool,
+}
+
+impl MemProfiler {
+    pub fn new(label: &'static str) -> Self {
+        Self { label, t0: Instant::now(), rss0: current_rss_bytes(), printed: false }
+    }
+
+    /// Print delta RSS and elapsed wall-time with an optional message.
+    pub fn checkpoint(&mut self, msg: impl AsRef<str>) {
+        let rss_now = current_rss_bytes();
+        let delta   = rss_now.saturating_sub(self.rss0);
+        let elapsed = self.t0.elapsed();
+        eprintln!(
+            "🧩 [{}] {} — ΔRSS: {:.2} MB, elapsed: {} ms",
+            self.label,
+            msg.as_ref(),
+            delta as f64 / 1_048_576.0,
+            elapsed.as_millis()
+        );
+        self.printed = true;
+    }
+}
+
+impl Drop for MemProfiler {
+    fn drop(&mut self) {
+        if !self.printed {
+            self.checkpoint("completed");
+        }
+    }
+}
+
