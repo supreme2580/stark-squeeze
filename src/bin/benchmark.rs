@@ -1,5 +1,6 @@
 use std::time::Instant;
 use tokio;
+use stark_squeeze::utils::{file_to_binary, binary_to_file};
 
 // Use imports from stark_squeeze crate
 extern crate stark_squeeze;
@@ -21,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Test reading with async implementation
     println!("\nTesting async file_to_binary...");
     let start = Instant::now();
-    let buffer = stark_squeeze::file_to_binary(test_file).await?;
+    let buffer = file_to_binary(test_file).await?;
     let duration = start.elapsed();
     
     println!("Read {}MB in {:?}", buffer.len() / (1024 * 1024), duration);
@@ -33,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let binary_string = String::from_utf8(vec![b'0', b'1'].repeat(TEST_SIZE_MB * 1024 * 512))?; // 5MB of alternating 0s and 1s
     
     let start = Instant::now();
-    stark_squeeze::binary_to_file(&binary_string, Some("test_output.bin")).await?;
+    binary_to_file(&binary_string, Some("test_output.bin")).await?;
     let duration = start.elapsed();
     
     println!("Wrote {}MB in {:?}", TEST_SIZE_MB, duration);

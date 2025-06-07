@@ -33,6 +33,11 @@ pub async fn file_to_binary(file_path: &str) -> std::io::Result<Vec<u8>> {
     tokio::fs::read(file_path).await
 }
 
+pub async fn binary_to_file(binary_string: &str, output_path: Option<&str>) -> std::io::Result<()> {
+    let path = output_path.unwrap_or("output.bin");
+    tokio::fs::write(path, binary_string.as_bytes()).await
+}
+
 pub fn encoding_one(binary_string: &str) -> std::io::Result<String> {
     if binary_string.is_empty() {
         return Ok(String::new());

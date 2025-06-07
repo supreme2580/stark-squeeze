@@ -1,6 +1,6 @@
 use crate::starknet_client::{get_all_data, retrieve_data, upload_data};
 use colored::*;
-use dialoguer::{Input, Select, Confirm};
+use dialoguer::{Input, Select};
 use indicatif::{ProgressBar, ProgressStyle};
 use starknet::core::types::FieldElement;
 use std::path::Path;
