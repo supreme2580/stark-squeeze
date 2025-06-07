@@ -30,6 +30,8 @@ enum Commands {
     },
     /// List all uploaded data
     List,
+    /// Generate dictionary of 5-character ASCII combinations
+    GenerateDictionary,
 }
 
 #[tokio::main]
