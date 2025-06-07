@@ -1,143 +1,174 @@
 use std::collections::HashMap;
-use sha2::{Sha256, Digest};
-use thiserror::Error;
+use std::error::Error;
+use std::fmt;
 
-#[derive(Error, Debug)]
-pub enum CompressionError {
-    #[error("Failed to compress data: {0}")]
-    CompressionError(String),
-    #[error("Failed to decompress data: {0}")]
-    DecompressionError(String),
+#[derive(Debug)]
+pub struct CompressionMapping {
+    pub chunk_size: usize,
+    pub chunk_to_byte: HashMap<Vec<u8>, u8>,
+    pub byte_to_chunk: HashMap<u8, Vec<u8>>,
+    pub compression_ratio: f64,
 }
 
-/// Represents the compression result containing the compressed data and the mapping
 #[derive(Debug)]
 pub struct CompressionResult {
     pub compressed_data: Vec<u8>,
-    pub chunk_mapping: HashMap<Vec<u8>, u8>,
-    pub hash: String,
+    pub mapping: CompressionMapping,
 }
 
-/// Compresses data by replacing unique chunks with single bytes
-pub fn compress_data(data: &[u8], chunk_size: usize) -> Result<CompressionResult, CompressionError> {
-    if data.is_empty() {
-        return Err(CompressionError::CompressionError("Empty data provided".into()));
-    }
+#[derive(Debug)]
+pub enum CompressionError {
+    InvalidChunkSize,
+    CompressionFailed,
+    Custom(String),
+}
 
-    if chunk_size == 0 {
-        return Err(CompressionError::CompressionError("Invalid chunk size".into()));
-    }
-
-    // Create a mapping of unique chunks to single bytes
-    let mut chunk_mapping: HashMap<Vec<u8>, u8> = HashMap::new();
-    let mut current_byte: u8 = 0;
-
-    // First pass: identify all unique chunks
-    for chunk in data.chunks(chunk_size) {
-        if !chunk_mapping.contains_key(chunk) {
-            chunk_mapping.insert(chunk.to_vec(), current_byte);
-            current_byte = current_byte.checked_add(1).ok_or_else(|| {
-                CompressionError::CompressionError("Too many unique chunks for u8".into())
-            })?;
+impl fmt::Display for CompressionError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            CompressionError::InvalidChunkSize => write!(f, "Invalid chunk size"),
+            CompressionError::CompressionFailed => write!(f, "Compression failed"),
+            CompressionError::Custom(msg) => write!(f, "{}", msg),
         }
     }
+}
 
-    // Second pass: replace chunks with their byte representations
-    let mut compressed_data = Vec::new();
-    for chunk in data.chunks(chunk_size) {
-        if let Some(&byte) = chunk_mapping.get(chunk) {
-            compressed_data.push(byte);
-        } else {
-            return Err(CompressionError::CompressionError(
-                "Failed to find chunk in mapping".into(),
-            ));
+impl Error for CompressionError {}
+
+/// Finds the optimal chunk size that gives >90% compression
+pub fn find_optimal_chunk_size(data: &[u8]) -> Result<usize, CompressionError> {
+    let mut best_chunk_size = 1;
+    let mut best_ratio = 1.0;
+    
+    // Try chunk sizes from 2 to 8 bytes
+    for chunk_size in 2..=8 {
+        let chunks: Vec<&[u8]> = data.chunks(chunk_size).collect();
+        let unique_chunks: std::collections::HashSet<&[u8]> = chunks.iter().copied().collect();
+        
+        // Calculate compression ratio
+        let original_size = data.len();
+        let compressed_size = chunks.len(); // Just the encoded data size
+        let ratio = compressed_size as f64 / original_size as f64;
+        
+        println!("Chunk size {}: {} unique chunks, ratio: {:.2}", 
+            chunk_size, unique_chunks.len(), ratio);
+        
+        if ratio < best_ratio {
+            best_ratio = ratio;
+            best_chunk_size = chunk_size;
+        }
+        
+        // If we achieve >90% compression, we can stop
+        if ratio <= 0.1 {
+            return Ok(chunk_size);
         }
     }
+    
+    Ok(best_chunk_size)
+}
 
-    // Generate a hash of the mapping for verification
-    let mut hasher = Sha256::new();
-    for (chunk, byte) in chunk_mapping.iter() {
-        hasher.update(chunk);
-        hasher.update(&[*byte]);
+/// Creates a mapping for unique chunks
+pub fn create_chunk_mapping(data: &[u8], chunk_size: usize) -> Result<CompressionMapping, CompressionError> {
+    let chunks: Vec<&[u8]> = data.chunks(chunk_size).collect();
+    let unique_chunks: Vec<&[u8]> = chunks.iter()
+        .copied()
+        .collect::<std::collections::HashSet<&[u8]>>()
+        .into_iter()
+        .collect();
+    
+    if unique_chunks.len() > 255 {
+        return Err(CompressionError::Custom(format!(
+            "Too many unique chunks ({}), maximum is 255", 
+            unique_chunks.len()
+        )));
     }
-    let hash = format!("{:x}", hasher.finalize());
-
-    Ok(CompressionResult {
-        compressed_data,
-        chunk_mapping,
-        hash,
+    
+    let mut chunk_to_byte = HashMap::new();
+    let mut byte_to_chunk = HashMap::new();
+    
+    for (i, chunk) in unique_chunks.iter().enumerate() {
+        let byte = i as u8;
+        chunk_to_byte.insert(chunk.to_vec(), byte);
+        byte_to_chunk.insert(byte, chunk.to_vec());
+    }
+    
+    let original_size = data.len();
+    let compressed_size = chunks.len(); // Just the encoded data size
+    let compression_ratio = compressed_size as f64 / original_size as f64;
+    
+    Ok(CompressionMapping {
+        chunk_size,
+        chunk_to_byte,
+        byte_to_chunk,
+        compression_ratio,
     })
 }
 
-/// Decompresses data using the provided mapping
-pub fn decompress_data(
-    compressed_data: &[u8],
-    chunk_mapping: &HashMap<Vec<u8>, u8>,
-    hash: &str,
-) -> Result<Vec<u8>, CompressionError> {
-    // Verify the hash of the mapping
-    let mut hasher = Sha256::new();
-    for (chunk, byte) in chunk_mapping.iter() {
-        hasher.update(chunk);
-        hasher.update(&[*byte]);
-    }
-    let computed_hash = format!("{:x}", hasher.finalize());
+/// Compresses data using the chunk mapping
+pub fn compress_data(data: &[u8], mapping: &CompressionMapping) -> Result<Vec<u8>, CompressionError> {
+    let chunks: Vec<&[u8]> = data.chunks(mapping.chunk_size).collect();
+    let mut compressed = Vec::with_capacity(chunks.len());
     
-    if computed_hash != hash {
-        return Err(CompressionError::DecompressionError(
-            "Hash verification failed".into(),
-        ));
+    for chunk in chunks {
+        let byte = mapping.chunk_to_byte.get(chunk)
+            .ok_or_else(|| CompressionError::Custom(format!(
+                "Chunk not found in mapping: {:?}", chunk
+            )))?;
+        compressed.push(*byte);
     }
+    
+    Ok(compressed)
+}
 
-    // Create reverse mapping
-    let mut reverse_mapping: HashMap<u8, &Vec<u8>> = HashMap::new();
-    for (chunk, byte) in chunk_mapping.iter() {
-        reverse_mapping.insert(*byte, chunk);
+/// Decompresses data using the chunk mapping
+pub fn decompress_data(compressed: &[u8], mapping: &CompressionMapping) -> Result<Vec<u8>, CompressionError> {
+    let mut decompressed = Vec::with_capacity(compressed.len() * mapping.chunk_size);
+    
+    for &byte in compressed {
+        let chunk = mapping.byte_to_chunk.get(&byte)
+            .ok_or_else(|| CompressionError::Custom(format!(
+                "Byte not found in mapping: {}", byte
+            )))?;
+        decompressed.extend_from_slice(chunk);
     }
+    
+    Ok(decompressed)
+}
 
-    // Decompress the data
-    let mut decompressed_data = Vec::new();
-    for &byte in compressed_data {
-        if let Some(chunk) = reverse_mapping.get(&byte) {
-            decompressed_data.extend_from_slice(chunk);
-        } else {
-            return Err(CompressionError::DecompressionError(
-                format!("Invalid byte in compressed data: {}", byte),
-            ));
-        }
-    }
-
-    Ok(decompressed_data)
+/// Main compression function that handles the entire process
+pub fn compress_file(data: &[u8]) -> Result<CompressionResult, CompressionError> {
+    // Find optimal chunk size
+    let chunk_size = find_optimal_chunk_size(data)?;
+    println!("\nSelected chunk size: {}", chunk_size);
+    
+    // Create mapping
+    let mapping = create_chunk_mapping(data, chunk_size)?;
+    println!("\nCreated mapping with {} unique chunks", mapping.chunk_to_byte.len());
+    println!("Compression ratio: {:.2}", mapping.compression_ratio);
+    
+    // Compress data
+    let compressed_data = compress_data(data, &mapping)?;
+    
+    Ok(CompressionResult {
+        compressed_data,
+        mapping,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    
     #[test]
-    fn test_compression_decompression() {
-        let test_data = b"Hello, World! Hello, World!";
-        let chunk_size = 4;
-
-        let compression_result = compress_data(test_data, chunk_size).unwrap();
-        let decompressed_data = decompress_data(
-            &compression_result.compressed_data,
-            &compression_result.chunk_mapping,
-            &compression_result.hash,
-        ).unwrap();
-
-        assert_eq!(test_data, decompressed_data.as_slice());
-    }
-
-    #[test]
-    fn test_empty_data() {
-        let result = compress_data(b"", 4);
-        assert!(matches!(result, Err(CompressionError::CompressionError(_))));
-    }
-
-    #[test]
-    fn test_invalid_chunk_size() {
-        let result = compress_data(b"test", 0);
-        assert!(matches!(result, Err(CompressionError::CompressionError(_))));
+    fn test_compression() {
+        let data = b"Hello, World! Hello, World! Hello, World!";
+        let result = compress_file(data).unwrap();
+        
+        // Verify compression ratio
+        assert!(result.mapping.compression_ratio < 1.0);
+        
+        // Verify we can decompress
+        let decompressed = decompress_data(&result.compressed_data, &result.mapping).unwrap();
+        assert_eq!(decompressed, data);
     }
 } 

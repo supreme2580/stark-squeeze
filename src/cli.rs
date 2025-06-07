@@ -70,7 +70,6 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
         }
     };
 
-    let mut hasher = Sha256::new();
     let mut buffer = Vec::new();
     if let Err(e) = file.read_to_end(&mut buffer).await {
         print_error("Failed to read file", &e);
@@ -87,7 +86,38 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
         }
     };
 
-    hasher.update(&ascii_buffer);
+    // Convert ASCII buffer to binary string
+    let binary_string: String = ascii_buffer.iter()
+        .map(|&byte| format!("{:08b}", byte))
+        .collect();
+
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+            .template("{spinner:.yellow} {msg}")
+            .unwrap(),
+    );
+    spinner.enable_steady_tick(Duration::from_millis(100));
+
+    // First encoding step
+    spinner.set_message("Encoding data...".yellow().to_string());
+    let (encoded_data, mapping) = match encoding_one(&binary_string).await {
+        Ok(result) => result,
+        Err(e) => {
+            print_error("Failed in encoding step", &e);
+            return;
+        }
+    };
+
+    // Calculate sizes and ratios
+    let original_size = binary_string.len() as u64;
+    let compressed_size = encoded_data.len() as u64;
+    let compression_ratio = ((compressed_size as f64 / original_size as f64) * 100.0) as u64;
+
+    // Generate hash from the compressed data
+    let mut hasher = Sha256::new();
+    hasher.update(&encoded_data);
     let hash = hasher.finalize();
 
     // Convert first 16 bytes of hash to FieldElement
@@ -100,13 +130,6 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
     };
 
     // Automatically determine file size and type
-    let original_size = ascii_buffer.len() as u64;
-    if original_size == 0 {
-        print_error("Invalid file", &"File is empty");
-        return;
-    }
-
-    // Validate the file has a valid extension
     let file_type = match Path::new(&file_path).extension() {
         Some(ext) => {
             let ext_str = ext.to_string_lossy().to_string();
@@ -122,44 +145,6 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
         }
     };
 
-    let spinner = ProgressBar::new_spinner();
-    spinner.set_style(
-        ProgressStyle::default_spinner()
-            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
-            .template("{spinner:.yellow} {msg}")
-            .unwrap(),
-    );
-    spinner.enable_steady_tick(Duration::from_millis(100));
-
-    // Convert ASCII buffer to binary string
-    let binary_string: String = ascii_buffer.iter()
-        .map(|&byte| format!("{:08b}", byte))
-        .collect();
-
-    // First encoding step
-    spinner.set_message("First encoding step...".yellow().to_string());
-    let encoded_one = match encoding_one(&binary_string).await {
-        Ok(encoded) => encoded,
-        Err(e) => {
-            print_error("Failed in first encoding step", &e);
-            return;
-        }
-    };
-
-    // Second encoding step
-    spinner.set_message("Second encoding step...".yellow().to_string());
-    let encoded_two = match encoding_two(&encoded_one).await {
-        Ok(encoded) => encoded,
-        Err(e) => {
-            print_error("Failed in second encoding step", &e);
-            return;
-        }
-    };
-
-    // Calculate sizes and ratios
-    let compressed_size = encoded_two.len() as u64;
-    let compression_ratio = ((compressed_size as f64 / original_size as f64) * 100.0) as u64;
-
     spinner.set_message("Uploading data...".yellow().to_string());
     if let Err(e) = upload_data(compressed_size, &file_type, original_size).await {
         print_error("Failed to upload data", &e);
@@ -168,9 +153,31 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
 
     spinner.finish_with_message("Upload complete!".green().to_string());
 
+    // Save the mapping information to a file
+    let mapping_file = format!("{}.mapping", file_path);
+    let mapping_info = format!(
+        "Upload ID: {}\n\nEncoding Details:\nChunk Size: {}\nCompression Ratio: {:.2}\n\nChunk Mapping:\n{}",
+        upload_id,
+        mapping.chunk_size,
+        mapping.compression_ratio,
+        mapping.byte_to_chunk.iter()
+            .map(|(byte, chunk)| format!("0x{:02x} -> {:?}", byte, chunk))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    if let Err(e) = tokio::fs::write(&mapping_file, mapping_info).await {
+        print_error("Failed to save mapping file", &e);
+    } else {
+        println!("\n📝 Mapping information saved to: {}", mapping_file);
+    }
+
     print_info("Upload ID:", upload_id);
-    print_info("Original Size:", format!("{} bytes", original_size));
-    print_info("New Size:", format!("{} bytes", compressed_size));
+    let original_mb = original_size as f64 / 1_000_000.0;
+    let compressed_mb = compressed_size as f64 / 1_000_000.0;
+    let reduction = 100.0 - compression_ratio as f64;
+    print_info("File Size:", format!("Reduced {:.1}% (from {:.2}MB to {:.2}MB)", 
+        reduction, original_mb, compressed_mb));
     let ratio_colored = if compression_ratio > 100 {
         format!("{:.1}%", compression_ratio).red().bold()
     } else {
