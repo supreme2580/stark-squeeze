@@ -8,22 +8,18 @@ pub mod starknet_client;
 use std::fs;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashMap;
-use std::io;
 use std::io::{self, BufWriter, Read, Write, BufReader};
 use std::thread::sleep;
 use std::time::Duration;
 use tokio::fs::File;
-use tokio::io::{self as tokio_io, AsyncReadExt, AsyncWriteExt, BufWriter};
+use tokio::io::{self as tokio_io, AsyncReadExt, AsyncWriteExt};
 use utils::matches_pattern;
 use dictionary::{Dictionary, FIRST_DICT, SECOND_DICT, CustomDictionary, DictionaryError};
 use ascii_converter::convert_file_to_ascii;
 
-use std::fs::File;
-use std::io::{self, BufWriter, Write};
 use std::path::Path;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::fs;
 use std::collections::HashSet;
 use thiserror::Error;
 
@@ -151,7 +147,7 @@ fn compute_hash<P: AsRef<Path>>(path: P) -> io::Result<u64> {
 /// Converts an ASCII string back to a binary file
 /// Ensures 1:1 byte correspondence (each ASCII char = 1 byte)
 /// Validates the content and ensures integrity post-write
-pub fn ascii_to_file(ascii_input: &str, output_path: &str) -> Result<(), AsciiToFileError> {
+pub async fn ascii_to_file(ascii_input: &str, output_path: &str) -> Result<(), AsciiToFileError> {
     // Step 1: Validation - ensure all characters are within ASCII range (0-127)
     if !ascii_input.chars().all(|c| c as u32 <= 127) {
         return Err(AsciiToFileError::InvalidASCIIError(
@@ -163,10 +159,10 @@ pub fn ascii_to_file(ascii_input: &str, output_path: &str) -> Result<(), AsciiTo
     let bytes = ascii_input.as_bytes();
 
     // Step 3: Write to file
-    let file = File::create(output_path)?;
-    let mut writer = BufWriter::new(file);
-    writer.write_all(bytes)?;
-    writer.flush()?;
+    let file = File::create(output_path).await?;
+    let mut writer = tokio_io::BufWriter::new(file);
+    writer.write_all(bytes).await?;
+    writer.flush().await?;
 
     // Step 4: Post-write validation
     let written_data = fs::read(output_path)?;
@@ -254,7 +250,7 @@ pub async fn binary_to_file(
 
     let file_path = output_path.unwrap_or("output.bin");
     let file = File::create(file_path).await?;
-    let mut writer = BufWriter::new(file);
+    let mut writer = tokio_io::BufWriter::new(file);
 
     let original_length = binary_string.len() as u16;
     writer.write_all(&original_length.to_be_bytes()).await?;
@@ -363,7 +359,7 @@ pub async fn join_by_5(input: &[u8], output_path: &str) -> io::Result<()> {
     println!("🚀 Processing {} bytes...", total_size);
 
     let file = File::create(output_path).await?;
-    let mut writer = BufWriter::new(file);
+    let mut writer = tokio_io::BufWriter::new(file);
 
     let pb = ProgressBar::new(total_size as u64);
     pb.set_style(
@@ -500,30 +496,13 @@ pub fn decoding_two_with_dict(encoded_string: &str, dict: &impl Dictionary) -> R
     Ok(result)
 }
 
-pub async fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
-    // Delegate to the dictionary-based implementation
-    encoding_two_with_dict(dot_string, &SECOND_DICT)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
-}
-
-// Base implementation functions that use the dictionary-aware versions
 pub async fn encoding_one(binary_string: &str) -> io::Result<String> {
     encoding_one_with_dict(binary_string, &FIRST_DICT)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
 
-pub fn decoding_one(dot_string: &str) -> Result<String, io::Error> {
-    decoding_one_with_dict(dot_string, &FIRST_DICT)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
-}
-
-pub fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
+pub async fn encoding_two(dot_string: &str) -> Result<String, io::Error> {
     encoding_two_with_dict(dot_string, &SECOND_DICT)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
-}
-
-pub fn decoding_two(encoded_string: &str) -> Result<String, io::Error> {
-    decoding_two_with_dict(encoded_string, &SECOND_DICT)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))
 }
 
@@ -667,7 +646,8 @@ mod tests {
     }
 
     #[test]
-iddu        let result = ascii_to_dot("A", Some(5), Some(true));
+    fn test_ascii_to_dot_with_colors() {
+        let result = ascii_to_dot("A", Some(5), Some(true));
         // Should contain ANSI escape codes
         assert!(result.contains("\x1b["));
     }
