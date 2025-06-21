@@ -8,8 +8,9 @@ use std::time::Duration;
 use sha2::{Sha256, Digest};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use crate::{encoding_one, encoding_two};
-use crate::ascii_converter::convert_file_to_ascii;
+use crate::encoding_one;
+use crate::ascii_converter::convert_to_printable_ascii;
+use crate::mapping::{create_complete_mapping, save_mapping};
 
 /// Prints a styled error message
 fn print_error(context: &str, error: &dyn std::fmt::Display) {
@@ -76,10 +77,10 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
         return;
     }
 
-    // Convert to printable ASCII before hashing and compression
+    // Convert to printable ASCII with detailed tracking
     println!("\n🔄 Converting file to printable ASCII...");
-    let ascii_buffer = match convert_file_to_ascii(buffer) {
-        Ok(converted) => converted,
+    let (ascii_buffer, ascii_stats) = match convert_to_printable_ascii(&buffer) {
+        Ok(result) => result,
         Err(e) => {
             print_error("Failed to convert file to ASCII", &e);
             return;
@@ -153,27 +154,98 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
 
     spinner.finish_with_message("Upload complete!".green().to_string());
 
-    // Save the mapping information to a file
-    let mapping_file = format!("{}.mapping", file_path);
-    let mapping_info = format!(
-        "Upload ID: {}\n\nEncoding Details:\nChunk Size: {}\nCompression Ratio: {:.2}\n\nChunk Mapping:\n{}",
-        upload_id,
-        mapping.chunk_size,
-        mapping.compression_ratio,
-        mapping.byte_to_chunk.iter()
-            .map(|(byte, chunk)| format!("0x{:02x} -> {:?}", byte, chunk))
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
+    // Create comprehensive mapping for lossless reversal
+    let complete_mapping = match create_complete_mapping(
+        mapping,
+        &ascii_stats,
+        &file_path,
+        &upload_id.to_string(),
+        &buffer,
+    ) {
+        Ok(mapping) => mapping,
+        Err(e) => {
+            print_error("Failed to create mapping", &e);
+            return;
+        }
+    };
 
-    if let Err(e) = tokio::fs::write(&mapping_file, mapping_info).await {
+    // Save the comprehensive mapping to a JSON file
+    let mapping_file = format!("{}.mapping.json", file_path);
+    if let Err(e) = save_mapping(&complete_mapping, &mapping_file) {
         print_error("Failed to save mapping file", &e);
     } else {
-        println!("\n📝 Mapping information saved to: {}", mapping_file);
+        println!("\n📝 Comprehensive mapping saved to: {}", mapping_file);
+        println!("   This file contains all information needed for lossless reversal");
+    }
+
+    // Also save a human-readable summary
+    let summary_file = format!("{}.summary.txt", file_path);
+    let summary_content = format!(
+        "StarkSqueeze Compression Summary
+=====================================
+
+File Information:
+- Original File: {}
+- Upload ID: {}
+- File Type: {}
+- Original Size: {} bytes ({:.2} MB)
+
+Compression Details:
+- Chunk Size: {}
+- Compressed Size: {} bytes ({:.2} MB)
+- Compression Ratio: {:.1}%
+- Size Reduction: {:.1}%
+
+ASCII Conversion:
+- Total Bytes: {}
+- Converted Bytes: {} ({:.1}%)
+- Conversion Needed: {}
+
+Reversal Information:
+- Total Reversal Steps: {}
+- Steps: {}
+
+Mapping File: {}
+- Format: JSON
+- Contains: Complete reversal instructions and mappings
+
+To reverse this compression:
+1. Use the mapping file: {}
+2. Run: stark_squeeze reverse --mapping {} --input <compressed_file> --output <original_file>
+
+",
+        file_path,
+        upload_id,
+        file_type,
+        buffer.len(),
+        buffer.len() as f64 / 1_000_000.0,
+        complete_mapping.compression_mapping.chunk_size,
+        compressed_size,
+        compressed_size as f64 / 1_000_000.0,
+        compression_ratio,
+        100.0 - compression_ratio as f64,
+        ascii_stats.total_bytes,
+        ascii_stats.converted_bytes,
+        (ascii_stats.converted_bytes as f64 / ascii_stats.total_bytes as f64) * 100.0,
+        if ascii_stats.converted_bytes > 0 { "Yes" } else { "No" },
+        complete_mapping.reversal_instructions.total_steps,
+        complete_mapping.reversal_instructions.steps.iter()
+            .map(|step| format!("{}. {}", step.step_number, step.operation))
+            .collect::<Vec<_>>()
+            .join(", "),
+        mapping_file,
+        mapping_file,
+        mapping_file
+    );
+
+    if let Err(e) = tokio::fs::write(&summary_file, summary_content).await {
+        print_error("Failed to save summary file", &e);
+    } else {
+        println!("📋 Human-readable summary saved to: {}", summary_file);
     }
 
     print_info("Upload ID:", upload_id);
-    let original_mb = original_size as f64 / 1_000_000.0;
+    let original_mb = buffer.len() as f64 / 1_000_000.0;
     let compressed_mb = compressed_size as f64 / 1_000_000.0;
     let reduction = 100.0 - compression_ratio as f64;
     print_info("File Size:", format!("Reduced {:.1}% (from {:.2}MB to {:.2}MB)", 
@@ -184,6 +256,12 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
         format!("{:.1}%", compression_ratio).green().bold()
     };
     print_info("Compression Ratio:", ratio_colored);
+    
+    if ascii_stats.converted_bytes > 0 {
+        print_info("ASCII Conversion:", format!("{} bytes converted ({:.1}%)", 
+            ascii_stats.converted_bytes, 
+            (ascii_stats.converted_bytes as f64 / ascii_stats.total_bytes as f64) * 100.0));
+    }
 }
 
 /// Retrieves previously uploaded data
@@ -272,13 +350,133 @@ pub async fn list_all_uploads() {
     }
 }
 
+/// Reverses a compressed file using the comprehensive mapping
+pub async fn reverse_data_cli() {
+    // Prompt for mapping file
+    let mapping_path = prompt_string("Enter the path to the mapping file (.mapping.json)").await;
+    let mapping_path = std::path::Path::new(&mapping_path);
+    if !tokio::fs::metadata(&mapping_path).await.map(|m| m.is_file()).unwrap_or(false) {
+        print_error("Invalid mapping file", &format!("File does not exist or is not a file: {}", mapping_path.display()));
+        return;
+    }
+
+    // Prompt for compressed file
+    let compressed_path = prompt_string("Enter the path to the compressed file").await;
+    let compressed_path = std::path::Path::new(&compressed_path);
+    if !tokio::fs::metadata(&compressed_path).await.map(|m| m.is_file()).unwrap_or(false) {
+        print_error("Invalid compressed file", &format!("File does not exist or is not a file: {}", compressed_path.display()));
+        return;
+    }
+
+    // Load the comprehensive mapping
+    let complete_mapping = match crate::mapping::load_mapping(mapping_path.to_str().unwrap()) {
+        Ok(mapping) => mapping,
+        Err(e) => {
+            print_error("Failed to load mapping file", &e);
+            return;
+        }
+    };
+
+    // Read compressed file
+    let compressed_data = match tokio::fs::read(&compressed_path).await {
+        Ok(data) => data,
+        Err(e) => {
+            print_error("Failed to read compressed file", &e);
+            return;
+        }
+    };
+
+    println!("\n🔄 Reversing compression...");
+    println!("   File: {}", compressed_path.display());
+    println!("   Mapping: {}", mapping_path.display());
+    println!("   Reversal steps: {}", complete_mapping.reversal_instructions.total_steps);
+
+    // Show reversal steps
+    for step in &complete_mapping.reversal_instructions.steps {
+        println!("   {}. {}: {}", step.step_number, step.operation, step.description);
+    }
+
+    // Perform the reversal
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(
+        ProgressStyle::default_spinner()
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"])
+            .template("{spinner:.yellow} {msg}")
+            .unwrap(),
+    );
+    spinner.enable_steady_tick(Duration::from_millis(100));
+
+    spinner.set_message("Reversing compression...".yellow().to_string());
+    let original_data = match crate::mapping::reverse_compression(&compressed_data, &complete_mapping) {
+        Ok(data) => data,
+        Err(e) => {
+            print_error("Failed to reverse compression", &e);
+            return;
+        }
+    };
+
+    spinner.finish_with_message("Reversal complete!".green().to_string());
+
+    // Determine output filename
+    let output_path = if let Some(stem) = compressed_path.file_stem() {
+        if let Some(stem_str) = stem.to_str() {
+            // Try to restore original extension
+            let original_ext = &complete_mapping.file_info.file_extension;
+            if !original_ext.is_empty() && original_ext != "unknown" {
+                compressed_path.with_file_name(format!("{}.{}", stem_str, original_ext))
+            } else {
+                compressed_path.with_file_name(format!("{}_reversed", stem_str))
+            }
+        } else {
+            compressed_path.with_file_name("reversed_file")
+        }
+    } else {
+        compressed_path.with_file_name("reversed_file")
+    };
+
+    // Save the reversed file
+    if let Err(e) = tokio::fs::write(&output_path, &original_data).await {
+        print_error("Failed to save reversed file", &e);
+        return;
+    }
+
+    // Verify the file size matches the original
+    let expected_size = complete_mapping.file_info.original_size;
+    let actual_size = original_data.len();
+    
+    if expected_size == actual_size {
+        println!("\n✅ Reversal successful!");
+        print_info("Original file size:", format!("{} bytes", expected_size));
+        print_info("Reversed file size:", format!("{} bytes", actual_size));
+        print_info("Reversed file saved as:", output_path.display());
+        
+        // Verify hash if available
+        let mut hasher = Sha256::new();
+        hasher.update(&original_data);
+        let actual_hash = format!("{:x}", hasher.finalize());
+        
+        if actual_hash == complete_mapping.file_info.hash {
+            println!("🔐 Hash verification: {}", "PASSED".green().bold());
+        } else {
+            println!("⚠️  Hash verification: {}", "FAILED".yellow().bold());
+            println!("   Expected: {}", complete_mapping.file_info.hash);
+            println!("   Actual:   {}", actual_hash);
+        }
+    } else {
+        println!("\n⚠️  Reversal completed but size mismatch detected");
+        print_info("Expected size:", format!("{} bytes", expected_size));
+        print_info("Actual size:", format!("{} bytes", actual_size));
+        print_info("Reversed file saved as:", output_path.display());
+    }
+}
+
 /// Displays the CLI menu and handles command routing
 pub async fn main_menu() {
     loop {
         println!("\n{}", "🚀 Welcome to StarkSqueeze CLI!".bold().cyan());
         println!("{}", "Please choose an option:".bold());
 
-        let options = vec!["Upload Data", "Retrieve Data", "Get All Data", "Exit"];
+        let options = vec!["Upload Data", "Retrieve Data", "Get All Data", "Reverse File", "Exit"];
         let selection = match Select::new()
             .with_prompt("Select an option")
             .items(&options)
@@ -296,7 +494,8 @@ pub async fn main_menu() {
             0 => upload_data_cli(None).await,
             1 => retrieve_data_cli(None).await,
             2 => list_all_uploads().await,
-            3 => {
+            3 => reverse_data_cli().await,
+            4 => {
                 println!("{}", "👋 Goodbye!".bold().green());
                 break;
             }
