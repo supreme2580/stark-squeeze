@@ -52,7 +52,7 @@ pub async fn upload_data(
 
     let call = Call {
         to: contract_address,
-        selector: get_selector_from_name("process_file_metadata")?,
+        selector: get_selector_from_name("store_compression_mapping")?,
         calldata: vec![
             FieldElement::from(data_size),    // data_size
             file_type_felt,                   // file_type
@@ -64,7 +64,7 @@ pub async fn upload_data(
     match account.provider().call(
         FunctionCall {
             contract_address,
-            entry_point_selector: get_selector_from_name("process_file_metadata")?,
+            entry_point_selector: get_selector_from_name("store_compression_mapping")?,
             calldata: call.calldata.clone(),
         },
         BlockId::Tag(BlockTag::Latest),
@@ -72,7 +72,7 @@ pub async fn upload_data(
         Ok(_) => {},
         Err(e) => {
             if e.to_string().contains("Invalid message selector") {
-                return Err("Contract function 'process_file_metadata' not found. Please verify the contract address and function name.".into());
+                return Err("Contract function 'store_compression_mapping' not found. Please verify the contract address and function name.".into());
             }
             return Err(format!("Transaction simulation failed: {}", e).into());
         }
