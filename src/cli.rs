@@ -189,51 +189,72 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
     }
 }
 
+/// Reconstructs a file from mapping and compressed data
+pub async fn reconstruct_from_mapping_and_compressed_cli() {
+    let mapping_file_path = prompt_string("Enter the mapping file path (e.g., file.png.mapping.json)").await;
+    let compressed_file_path = prompt_string("Enter the compressed data file path (e.g., file.png.compressed)").await;
+    let output_file_path = prompt_string("Enter the output file path (e.g., file.png)").await;
+
+    match crate::mapping::reconstruct_from_mapping_and_compressed(
+        &mapping_file_path,
+        &compressed_file_path,
+        &output_file_path,
+    ) {
+        Ok(_) => println!("✅ File reconstructed successfully: {}", output_file_path),
+        Err(e) => print_error("Failed to reconstruct file", &e),
+    }
+}
+
 /// Displays the CLI menu and handles command routing
 pub async fn main_menu() {
     loop {
         println!("\n{}", "🚀 Welcome to StarkSqueeze CLI!".bold().cyan());
         println!("{}", "Please choose an option:".bold());
 
-        let options = vec!["Upload Data", "Retrieve File", "Get All Files IDs", "Get All Files", "Exit"];
-        let selection = match Select::new()
-            .with_prompt("Select an option")
-            .items(&options)
-            .default(0)
-            .interact()
-        {
-            Ok(sel) => sel,
-            Err(e) => {
-                print_error("Selection failed", &e);
-                continue;
-            }
-        };
+        println!("1. Upload Data");
+        println!("2. Reconstruct File (mapping only)");
+        println!("3. Reconstruct File (mapping + compressed data)");
+        println!("4. Get All Files IDs");
+        println!("5. Get All Files");
+        println!("6. Exit");
 
+        let mut input = String::new();
+        print!("Enter your choice (1-6): ");
+        std::io::stdout().flush().unwrap();
+        
+        if let Err(_) = std::io::stdin().read_line(&mut input) {
+            println!("Failed to read input");
+            continue;
+        }
+
+        let selection = input.trim();
         match selection {
-            0 => upload_data_cli(None).await,
-            1 => {
-                println!("\n{}", "🔧 Retrieve File - Coming Soon!".yellow().bold());
-                println!("This feature will allow you to retrieve files using their upload ID.");
+            "1" => upload_data_cli(None).await,
+            "2" => {
+                println!("\n{}", "❌ Reconstruct File (mapping only) is not supported. Please use option 3 with both mapping and compressed data.".red().bold());
                 println!("Press Enter to continue...");
                 let _ = std::io::stdin().read_line(&mut String::new());
             },
-            2 => {
+            "3" => reconstruct_from_mapping_and_compressed_cli().await,
+            "4" => {
                 println!("\n{}", "📋 Get All Files IDs - Coming Soon!".yellow().bold());
                 println!("This feature will list all uploaded file IDs.");
                 println!("Press Enter to continue...");
                 let _ = std::io::stdin().read_line(&mut String::new());
             },
-            3 => {
+            "5" => {
                 println!("\n{}", "📁 Get All Files - Coming Soon!".yellow().bold());
                 println!("This feature will list all uploaded files with details.");
                 println!("Press Enter to continue...");
                 let _ = std::io::stdin().read_line(&mut String::new());
             },
-            4 => {
+            "6" => {
                 println!("{}", "👋 Goodbye!".bold().green());
                 break;
             }
-            _ => unreachable!(),
+            _ => {
+                println!("Invalid choice. Please enter a number between 1 and 6.");
+            }
         }
     }
 }

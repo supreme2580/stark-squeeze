@@ -1,3 +1,4 @@
 /target
 .env
 /file.png
+.mapping.json

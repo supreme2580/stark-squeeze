@@ -38,9 +38,18 @@ pub async fn get_account() -> Result<SingleOwnerAccount<JsonRpcClient<HttpTransp
 
 /// Uploads compressed data metadata to the contract.
 pub async fn upload_data(
-    data_size: u64,
-    file_type: &str,
-    original_size: u64,
+    uri: &str,
+    file_format: &str,
+    compressed_by: u8,
+    original_size: usize,
+    final_size: usize,
+    chunk_size: usize,
+    chunk_mappings: Vec<FieldElement>,
+    chunk_values: Vec<u8>,
+    byte_mappings: Vec<u8>,
+    byte_values: Vec<FieldElement>,
+    reconstruction_steps: Vec<FieldElement>,
+    metadata: Vec<FieldElement>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
@@ -48,16 +57,83 @@ pub async fn upload_data(
     let contract_address = env::var("CONTRACT_ADDRESS").map_err(|_| "CONTRACT_ADDRESS not set in .env")?;
     let contract_address = FieldElement::from_hex_be(&contract_address)?;
 
-    let file_type_felt = short_string_to_felt(file_type)?;
+    let uri_felt = match short_string_to_felt(uri) {
+        Ok(felt) => felt,
+        Err(e) => {
+            eprintln!("[short_string_to_felt ERROR] Failed string: '{}', error: {}", uri, e);
+            return Err(format!("short_string_to_felt failed for uri '{}': {}", uri, e).into());
+        }
+    };
+    let file_format_felt = match short_string_to_felt(file_format) {
+        Ok(felt) => felt,
+        Err(e) => {
+            eprintln!("[short_string_to_felt ERROR] Failed string: '{}', error: {}", file_format, e);
+            return Err(format!("short_string_to_felt failed for file_format '{}': {}", file_format, e).into());
+        }
+    };
+
+    // Store lengths before moving vectors
+    let chunk_mappings_len = chunk_mappings.len();
+    let chunk_values_len = chunk_values.len();
+    let byte_mappings_len = byte_mappings.len();
+    let byte_values_len = byte_values.len();
+    let reconstruction_steps_len = reconstruction_steps.len();
+    let metadata_len = metadata.len();
+
+    // Convert vectors to calldata format
+    let mut calldata = vec![
+        uri_felt,                                    // uri
+        file_format_felt,                            // file_format
+        FieldElement::from(compressed_by),           // compressed_by
+        FieldElement::from(original_size),           // original_size
+        FieldElement::from(final_size),              // final_size
+        FieldElement::from(chunk_size),              // chunk_size
+        FieldElement::from(chunk_mappings_len),      // chunk_mappings array length
+    ];
+    
+    // Add chunk_mappings
+    calldata.extend(chunk_mappings);
+    
+    // Add chunk_values array length and values
+    calldata.push(FieldElement::from(chunk_values_len));
+    calldata.extend(chunk_values.into_iter().map(FieldElement::from));
+    
+    // Add byte_mappings array length and values
+    calldata.push(FieldElement::from(byte_mappings_len));
+    calldata.extend(byte_mappings.into_iter().map(FieldElement::from));
+    
+    // Add byte_values array length and values
+    calldata.push(FieldElement::from(byte_values_len));
+    calldata.extend(byte_values);
+    
+    // Add reconstruction_steps array length and values
+    calldata.push(FieldElement::from(reconstruction_steps_len));
+    calldata.extend(reconstruction_steps);
+    
+    // Add metadata array length and values
+    calldata.push(FieldElement::from(metadata_len));
+    calldata.extend(metadata);
+
+    // Debug: Print calldata structure
+    println!("[DEBUG] Calldata structure:");
+    println!("  uri: {}", uri_felt);
+    println!("  file_format: {}", file_format_felt);
+    println!("  compressed_by: {}", compressed_by);
+    println!("  original_size: {}", original_size);
+    println!("  final_size: {}", final_size);
+    println!("  chunk_size: {}", chunk_size);
+    println!("  chunk_mappings: {} items", chunk_mappings_len);
+    println!("  chunk_values: {} items", chunk_values_len);
+    println!("  byte_mappings: {} items", byte_mappings_len);
+    println!("  byte_values: {} items", byte_values_len);
+    println!("  reconstruction_steps: {} items", reconstruction_steps_len);
+    println!("  metadata: {} items", metadata_len);
+    println!("  Total calldata length: {}", calldata.len());
 
     let call = Call {
         to: contract_address,
         selector: get_selector_from_name("store_compression_mapping")?,
-        calldata: vec![
-            FieldElement::from(data_size),    // data_size
-            file_type_felt,                   // file_type
-            FieldElement::from(original_size), // original_size
-        ],
+        calldata,
     };
 
     // Try to simulate the transaction first
@@ -71,6 +147,8 @@ pub async fn upload_data(
     ).await {
         Ok(_) => {},
         Err(e) => {
+            eprintln!("[CONTRACT ERROR] Full error details: {:?}", e);
+            eprintln!("[CONTRACT ERROR] Error string: {}", e);
             if e.to_string().contains("Invalid message selector") {
                 return Err("Contract function 'store_compression_mapping' not found. Please verify the contract address and function name.".into());
             }
