@@ -1,4 +1,4 @@
-use crate::compression::{compress_file, CompressionResult, CompressionMapping};
+use crate::compression::{compress_file, CompressionMapping};
 use std::error::Error;
 
 /// First encoding step using compression

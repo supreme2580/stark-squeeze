@@ -1,13 +1,39 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CompressionMapping {
     pub chunk_size: usize,
+    #[serde(serialize_with = "serialize_chunk_map")]
+    #[serde(deserialize_with = "deserialize_chunk_map")]
     pub chunk_to_byte: HashMap<Vec<u8>, u8>,
+    #[serde(serialize_with = "serialize_byte_map")]
+    #[serde(deserialize_with = "deserialize_byte_map")]
     pub byte_to_chunk: HashMap<u8, Vec<u8>>,
     pub compression_ratio: f64,
+    // New fields for complete reversal
+    pub ascii_conversion_map: HashMap<u8, u8>, // Maps converted ASCII back to original bytes
+    pub original_file_info: FileInfo,
+    pub processing_steps: Vec<ProcessingStep>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FileInfo {
+    pub original_size: usize,
+    pub file_extension: String,
+    pub upload_id: String,
+    pub hash: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProcessingStep {
+    pub step_name: String,
+    pub description: String,
+    pub input_type: String,
+    pub output_type: String,
+    pub parameters: HashMap<String, String>,
 }
 
 #[derive(Debug)]
@@ -101,6 +127,14 @@ pub fn create_chunk_mapping(data: &[u8], chunk_size: usize) -> Result<Compressio
         chunk_to_byte,
         byte_to_chunk,
         compression_ratio,
+        ascii_conversion_map: HashMap::new(),
+        original_file_info: FileInfo {
+            original_size: 0,
+            file_extension: String::new(),
+            upload_id: String::new(),
+            hash: String::new(),
+        },
+        processing_steps: Vec::new(),
     })
 }
 
@@ -153,6 +187,136 @@ pub fn compress_file(data: &[u8]) -> Result<CompressionResult, CompressionError>
         compressed_data,
         mapping,
     })
+}
+
+// Custom serialization for chunk_to_byte HashMap
+fn serialize_chunk_map<S>(
+    map: &HashMap<Vec<u8>, u8>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut map_serializer = serializer.serialize_map(Some(map.len()))?;
+    for (chunk, byte) in map {
+        let chunk_str = chunk.iter()
+            .map(|&b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join("");
+        map_serializer.serialize_entry(&chunk_str, byte)?;
+    }
+    map_serializer.end()
+}
+
+// Custom deserialization for chunk_to_byte HashMap
+fn deserialize_chunk_map<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<Vec<u8>, u8>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{MapAccess, Visitor};
+    use std::fmt;
+
+    struct ChunkMapVisitor;
+
+    impl<'de> Visitor<'de> for ChunkMapVisitor {
+        type Value = HashMap<Vec<u8>, u8>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a map of hex strings to bytes")
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let mut map = HashMap::new();
+            while let Some((chunk_str, byte)) = access.next_entry::<String, u8>()? {
+                let chunk: Vec<u8> = chunk_str.as_bytes()
+                    .chunks(2)
+                    .filter_map(|chunk| {
+                        if chunk.len() == 2 {
+                            u8::from_str_radix(&String::from_utf8_lossy(chunk), 16).ok()
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                map.insert(chunk, byte);
+            }
+            Ok(map)
+        }
+    }
+
+    deserializer.deserialize_map(ChunkMapVisitor)
+}
+
+// Custom serialization for byte_to_chunk HashMap
+fn serialize_byte_map<S>(
+    map: &HashMap<u8, Vec<u8>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut map_serializer = serializer.serialize_map(Some(map.len()))?;
+    for (byte, chunk) in map {
+        let chunk_str = chunk.iter()
+            .map(|&b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join("");
+        map_serializer.serialize_entry(&format!("{:02x}", byte), &chunk_str)?;
+    }
+    map_serializer.end()
+}
+
+// Custom deserialization for byte_to_chunk HashMap
+fn deserialize_byte_map<'de, D>(
+    deserializer: D,
+) -> Result<HashMap<u8, Vec<u8>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{MapAccess, Visitor};
+    use std::fmt;
+
+    struct ByteMapVisitor;
+
+    impl<'de> Visitor<'de> for ByteMapVisitor {
+        type Value = HashMap<u8, Vec<u8>>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a map of hex strings to hex strings")
+        }
+
+        fn visit_map<M>(self, mut access: M) -> Result<Self::Value, M::Error>
+        where
+            M: MapAccess<'de>,
+        {
+            let mut map = HashMap::new();
+            while let Some((byte_str, chunk_str)) = access.next_entry::<String, String>()? {
+                if let Ok(byte) = u8::from_str_radix(&byte_str, 16) {
+                    let chunk: Vec<u8> = chunk_str.as_bytes()
+                        .chunks(2)
+                        .filter_map(|chunk| {
+                            if chunk.len() == 2 {
+                                u8::from_str_radix(&String::from_utf8_lossy(chunk), 16).ok()
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
+                    map.insert(byte, chunk);
+                }
+            }
+            Ok(map)
+        }
+    }
+
+    deserializer.deserialize_map(ByteMapVisitor)
 }
 
 #[cfg(test)]
