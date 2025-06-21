@@ -4,7 +4,6 @@
 
 use std::io;
 use std::collections::HashMap;
-use colored::*;
 use std::error::Error;
 
 // ASCII printable character range: 32 (space) to 126 (~)
@@ -38,45 +37,6 @@ pub struct ConversionStats {
     pub total_bytes: usize,
     pub converted_bytes: usize,
     pub character_map: HashMap<u8, usize>,
-}
-
-impl ConversionStats {
-    // Log conversion statistics
-    pub fn log_summary(&self) {
-        if self.converted_bytes == 0 {
-            println!("{}", "✅ No character conversions needed - file already contains only printable ASCII!".green());
-            return;
-        }
-
-        println!("{}", format!("📊 ASCII Conversion Summary:").blue().bold());
-        println!("  {} Total bytes processed", self.total_bytes.to_string().cyan());
-        println!("  {} Bytes converted ({:.2}%)",
-            self.converted_bytes.to_string().yellow(),
-            (self.converted_bytes as f64 / self.total_bytes as f64 * 100.0)
-        );
-
-        if !self.character_map.is_empty() {
-            println!("\n{}", "  Character conversion details:".dimmed());
-            let mut sorted_chars: Vec<_> = self.character_map.iter().collect();
-            sorted_chars.sort_by_key(|(_, count)| *count);
-            sorted_chars.reverse();
-
-            for (byte, count) in sorted_chars.iter().take(10) {
-                let char_repr = match **byte {
-                    0..=31 => format!("0x{:02X} (control)", byte),
-                    32..=126 => format!("0x{:02X} ('{}')", byte, **byte as char),
-                    127 => "0x7F (DEL)".to_string(),
-                    _ => format!("0x{:02X} (extended)", byte),
-                };
-                println!("    {} → converted {} times", char_repr.red(), count.to_string().yellow());
-            }
-
-            if self.character_map.len() > 10 {
-                println!("    {} more unique characters...",
-                    (self.character_map.len() - 10).to_string().dimmed());
-            }
-        }
-    }
 }
 
 fn convert_byte_to_ascii(byte: u8, stats: &mut ConversionStats) -> u8 {
@@ -147,8 +107,6 @@ pub fn convert_file_to_ascii(file_data: Vec<u8>) -> io::Result<Vec<u8>> {
     }
 
     pb.finish_with_message("✅ ASCII conversion complete!");
-    stats.log_summary();
-
     Ok(result)
 }
 

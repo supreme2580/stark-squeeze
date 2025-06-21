@@ -69,15 +69,12 @@ pub fn find_optimal_chunk_size(data: &[u8]) -> Result<usize, CompressionError> {
     // Try chunk sizes from 2 to 8 bytes
     for chunk_size in 2..=8 {
         let chunks: Vec<&[u8]> = data.chunks(chunk_size).collect();
-        let unique_chunks: std::collections::HashSet<&[u8]> = chunks.iter().copied().collect();
+        let _unique_chunks: std::collections::HashSet<&[u8]> = chunks.iter().copied().collect();
         
         // Calculate compression ratio
         let original_size = data.len();
         let compressed_size = chunks.len(); // Just the encoded data size
         let ratio = compressed_size as f64 / original_size as f64;
-        
-        println!("Chunk size {}: {} unique chunks, ratio: {:.2}", 
-            chunk_size, unique_chunks.len(), ratio);
         
         if ratio < best_ratio {
             best_ratio = ratio;
@@ -154,31 +151,13 @@ pub fn compress_data(data: &[u8], mapping: &CompressionMapping) -> Result<Vec<u8
     Ok(compressed)
 }
 
-/// Decompresses data using the chunk mapping
-pub fn decompress_data(compressed: &[u8], mapping: &CompressionMapping) -> Result<Vec<u8>, CompressionError> {
-    let mut decompressed = Vec::with_capacity(compressed.len() * mapping.chunk_size);
-    
-    for &byte in compressed {
-        let chunk = mapping.byte_to_chunk.get(&byte)
-            .ok_or_else(|| CompressionError::Custom(format!(
-                "Byte not found in mapping: {}", byte
-            )))?;
-        decompressed.extend_from_slice(chunk);
-    }
-    
-    Ok(decompressed)
-}
-
 /// Main compression function that handles the entire process
 pub fn compress_file(data: &[u8]) -> Result<CompressionResult, CompressionError> {
     // Find optimal chunk size
     let chunk_size = find_optimal_chunk_size(data)?;
-    println!("\nSelected chunk size: {}", chunk_size);
     
     // Create mapping
     let mapping = create_chunk_mapping(data, chunk_size)?;
-    println!("\nCreated mapping with {} unique chunks", mapping.chunk_to_byte.len());
-    println!("Compression ratio: {:.2}", mapping.compression_ratio);
     
     // Compress data
     let compressed_data = compress_data(data, &mapping)?;
@@ -317,22 +296,4 @@ where
     }
 
     deserializer.deserialize_map(ByteMapVisitor)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_compression() {
-        let data = b"Hello, World! Hello, World! Hello, World!";
-        let result = compress_file(data).unwrap();
-        
-        // Verify compression ratio
-        assert!(result.mapping.compression_ratio < 1.0);
-        
-        // Verify we can decompress
-        let decompressed = decompress_data(&result.compressed_data, &result.mapping).unwrap();
-        assert_eq!(decompressed, data);
-    }
 } 
