@@ -1,14 +1,30 @@
 /// Interface representing the `Starksqueeze` contract.
-/// This interface focuses on compression metadata extraction and event emission.
+/// This interface focuses on compression mapping storage for file reconstruction.
 #[starknet::interface]
 pub trait IStarksqueeze<TContractState> {
-    /// Processes file compression data and emits metadata for analytics and tracking.
-    fn process_file_metadata(
-        ref self: TContractState, data_size: usize, file_type: felt252, original_size: usize,
+    /// Stores complete compression mapping data needed to reconstruct the original file.
+    fn store_compression_mapping(
+        ref self: TContractState,
+        // File identification
+        uri: felt252,
+        file_format: felt252,
+        // Compression metadata
+        compressed_by: u8, // compression percentage (0-100)
+        original_size: usize,
+        final_size: usize,
+        // Mapping data for reconstruction
+        chunk_size: usize,
+        chunk_mappings: Array<felt252>, // chunk keys
+        chunk_values: Array<u8>, // chunk values
+        byte_mappings: Array<u8>, // byte keys
+        byte_values: Array<felt252>, // byte values
+        // Additional reconstruction data
+        reconstruction_steps: Array<felt252>,
+        metadata: Array<felt252>,
     );
 }
 
-/// Contract for emitting compression metadata events used in file analytics.
+/// Contract for storing compression mapping data for file reconstruction.
 #[starknet::contract]
 mod Starksqueeze {
     #[storage]
@@ -17,44 +33,67 @@ mod Starksqueeze {
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-        CompressionMetadata: CompressionMetadataEvent,
+        CompressionMappingStored: CompressionMappingStoredEvent,
     }
 
-    /// Event emitted after file metadata is processed for compression analysis.
+    /// Event emitted when compression mapping data is stored.
     #[derive(Drop, starknet::Event)]
-    struct CompressionMetadataEvent {
+    struct CompressionMappingStoredEvent {
         #[key]
-        file_type: felt252,
-        size: usize,
+        uri: felt252,
+        file_format: felt252,
+        compressed_by: u8,
         original_size: usize,
-        new_size: usize,
-        compression_ratio: u64,
+        final_size: usize,
+        chunk_size: usize,
+        chunk_mappings: Array<felt252>,
+        chunk_values: Array<u8>,
+        byte_mappings: Array<u8>,
+        byte_values: Array<felt252>,
+        reconstruction_steps: Array<felt252>,
+        metadata: Array<felt252>,
     }
 
     #[abi(embed_v0)]
     impl StarksqueezeImpl of super::IStarksqueeze<ContractState> {
-        fn process_file_metadata(
-            ref self: ContractState, data_size: usize, file_type: felt252, original_size: usize,
+        fn store_compression_mapping(
+            ref self: ContractState,
+            // File identification
+            uri: felt252,
+            file_format: felt252,
+            // Compression metadata
+            compressed_by: u8,
+            original_size: usize,
+            final_size: usize,
+            // Mapping data for reconstruction
+            chunk_size: usize,
+            chunk_mappings: Array<felt252>,
+            chunk_values: Array<u8>,
+            byte_mappings: Array<u8>,
+            byte_values: Array<felt252>,
+            // Additional reconstruction data
+            reconstruction_steps: Array<felt252>,
+            metadata: Array<felt252>,
         ) {
-            let new_size = if data_size == 0 {
-                0
-            } else {
-                data_size / 2
-            };
-
-            let compression_ratio = if new_size == 0 {
-                0_u64
-            } else {
-                let ratio: u64 = (original_size * 100 / new_size).into();
-                ratio
-            };
-
-            self
-                .emit(
-                    CompressionMetadataEvent {
-                        file_type, size: data_size, original_size, new_size, compression_ratio,
-                    },
-                );
+            // Validate compression percentage (0-100)
+            assert(compressed_by <= 100, 'Invalid compression percentage');
+            
+            self.emit(
+                CompressionMappingStoredEvent {
+                    uri,
+                    file_format,
+                    compressed_by,
+                    original_size,
+                    final_size,
+                    chunk_size,
+                    chunk_mappings,
+                    chunk_values,
+                    byte_mappings,
+                    byte_values,
+                    reconstruction_steps,
+                    metadata,
+                },
+            );
         }
     }
 }
