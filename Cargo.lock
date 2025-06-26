@@ -1792,6 +1792,7 @@ dependencies = [
  "colored",
  "dialoguer",
  "dotenvy",
+ "hex",
  "indicatif",
  "serde",
  "serde_json",

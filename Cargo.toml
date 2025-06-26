@@ -21,6 +21,7 @@ sha2 = "0.10"
 url = "2.5.4"
 dotenvy = "0.15"
 thiserror = "2.0.12"
+hex = "0.4.3"
 
 [dev-dependencies]
 tempfile = "3.8.0"
