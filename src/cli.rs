@@ -12,6 +12,7 @@ use tokio::io::AsyncReadExt;
 use crate::ascii_converter::convert_to_printable_ascii;
 use crate::mapping::{create_minimal_mapping, save_minimal_mapping, reconstruct_from_minimal_mapping, analyze_minimal_mapping};
 use hex;
+use crate::ipfs_client::pin_file_to_ipfs;
 use std::fs;
 use serde_json::{json, Value};
 
@@ -184,6 +185,20 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
     }
 
     spinner.finish_with_message("Upload complete!".green().to_string());
+
+    // IPFS Pinning after upload completion
+    println!("\n{}", "🔗 Starting IPFS pinning...".blue().bold());
+    
+    match pin_file_to_ipfs(&encoded_data, &format!("{}.compressed", file_path)).await {
+        Ok(ipfs_cid) => {
+            println!("✅ Pinned to IPFS: {}", ipfs_cid.green().bold());
+            println!("🌐 IPFS Gateway: https://gateway.pinata.cloud/ipfs/{}", ipfs_cid);
+        }
+        Err(e) => {
+            println!("❌ IPFS Pin Failed: {}", e.to_string().red().bold());
+            println!("💡 Check your PINATA_JWT token in .env file");
+        }
+    }
 
     // Create minimal mapping for file reconstruction
     let minimal_mapping = create_minimal_mapping(
