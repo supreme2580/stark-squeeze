@@ -12,6 +12,8 @@ serde = { version = "1.0", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 # StarkNet interaction
 starknet = "0.9" # Or latest available version
+reqwest = { version = "0.11", features = ["json", "multipart"] }
+base64 = "0.21"
 
 # Async runtime
 tokio = { version = "1.0", features = ["full", "test-util"] }
