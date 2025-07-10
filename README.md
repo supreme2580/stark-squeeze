@@ -59,14 +59,14 @@ metadata on-chain    file off-chain
 
 ```mermaid
 graph TD
-A[User uploads file (CLI/Web)] --> B[ASCII-safe conversion]
-B --> C[Chunking & Dictionary Mapping]
+A[User uploads file - CLI or Web] --> B[ASCII-safe conversion]
+B --> C[Chunking and Dictionary Mapping]
 C --> D[Compression]
-D --> E[Store mapping & metadata on Starknet]
+D --> E[Store mapping and metadata on Starknet]
 D --> F[Store compressed file off-chain]
 E --> G[On-chain: file hash, mapping, metadata]
 F --> H[Off-chain: compressed file, mapping file]
-G --> I[User retrieves file via hash/ID]
+G --> I[User retrieves file via hash or ID]
 H --> I
 I --> J[Reconstruction: decompress, reverse mapping, restore original file]
 ```
