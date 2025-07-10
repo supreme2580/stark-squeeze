@@ -65,7 +65,7 @@ fn convert_byte_to_ascii(byte: u8, stats: &mut ConversionStats) -> u8 {
     }
 }
 
-pub fn convert_to_printable_ascii(data: &[u8]) -> Result<(Vec<u8>, ConversionStats), Box<dyn Error>> {
+pub fn convert_to_printable_ascii(data: &[u8]) -> Result<(Vec<u8>, ConversionStats), Box<dyn Error + Send + Sync>> {
     let mut stats = ConversionStats {
         total_bytes: data.len(),
         ..Default::default()

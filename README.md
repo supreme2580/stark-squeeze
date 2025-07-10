@@ -1,92 +1,164 @@
-# Stark Squeeze - Compression System
+# Stark Squeeze
 
-## Contributors Group Chat
+## Overview
 
-Telegram group chat link: <https://t.me/+IfwMzjTrmI5kODk0>
+**Stark Squeeze** is a next-generation, high-compression file storage and retrieval system designed for the Starknet blockchain ecosystem. It enables users to compress, store, and reconstruct files with extremely high efficiency, leveraging both on-chain and off-chain components. The system is built in Rust and Cairo, and is designed for extensibility, transparency, and developer-friendliness.
 
-## File Conversion Pipeline
+---
 
-New: All file-to-string conversions now use ASCII-safe encoding.  
-Use file_to_ascii(input_file) to convert a file to a human-readable ASCII string (1 char = 1 byte, ASCII 0-126 only).
+## 🌟 Vision
 
-Deprecated: The previous binary conversion (`file_to_binary`) is now deprecated and should not be used for new workflows.
+- **Decentralized, verifiable file storage** for Starknet and beyond
+- **>90% compression** for most file types using chunk-based, dictionary-driven algorithms
+- **On-chain metadata and mapping** for trustless file reconstruction
+- **User-friendly CLI and Web API** for seamless integration and adoption
+- **Open, auditable, and extensible** for the Starknet community
 
-### Error Handling
+---
 
-If a file contains non-ASCII bytes (outside 0-126), file_to_ascii will return a clear error message and abort the operation.
+## 🏗️ High-Level Architecture & Flow
 
-### Migration
-
-- Update your code to use file_to_ascii instead of file_to_binary.
-- Update your tests to use ASCII sample files.
-
-## 📚 Compression System Documentation
-
-This section explains the mathematical foundation behind the compression system, helping developers and users understand the underlying logic behind compression performance.
-
-### 📘 Dictionary File Size Formula
-
-The dictionary size is determined by the number of unique chunks found in your data:
-
-```text
-Dictionary Size = Number of Unique Chunks × (Chunk Size + 1 byte)
+```mermaid
+graph TD;
+    A[User uploads file (CLI/Web)] --> B[ASCII-safe conversion];
+    B --> C[Chunking & Dictionary Mapping];
+    C --> D[Compression];
+    D --> E[Store mapping & metadata on Starknet];
+    D --> F[Store compressed file off-chain];
+    E --> G[On-chain: file hash, mapping, metadata];
+    F --> H[Off-chain: compressed file, mapping file];
+    G --> I[User retrieves file via hash/ID];
+    H --> I;
+    I --> J[Reconstruction: decompress, reverse mapping, restore original file];
 ```
 
-**Where:**
+---
 
-- **Number of Unique Chunks**: Count of distinct byte sequences in the data
-- **Chunk Size**: Optimized size per chunk (typically 2–8 bytes)
-- **+1 byte**: Each unique chunk is mapped to a single byte (u8)
+## 🚀 Full System Flow
 
-**Example:**
-For 100 unique 4-byte chunks:
+1. **File Upload**: User uploads a file via CLI or the HTTP server (`/compress` endpoint).
+2. **ASCII Conversion**: File is converted to a printable ASCII-safe format for universal compatibility.
+3. **Chunking & Mapping**: The ASCII data is split into optimal-sized chunks (2–8 bytes), and a dictionary is built mapping each unique chunk to a single byte.
+4. **Compression**: The file is compressed by replacing each chunk with its dictionary byte, achieving >90% compression for many files.
+5. **Hashing & Metadata**: The compressed data is hashed (SHA256) to generate a unique file ID. Metadata (original size, compressed size, file type, etc.) is prepared.
+6. **On-chain Storage**: The mapping, metadata, and file hash are uploaded to a Starknet smart contract for verifiable, decentralized reference.
+7. **Off-chain Storage**: The compressed file and mapping file are stored locally or on a decentralized storage network (IPFS/Arweave integration planned).
+8. **Retrieval**: Users can download the mapping file and reconstruct the original file using the mapping and the compressed data, fully verifiable via on-chain metadata.
 
-```text
-Dictionary Size = 100 × (4 + 1) = 500 bytes
+---
+
+## 🖥️ Server API Documentation
+
+### Running the Server
+
+```bash
+cargo run --bin server
 ```
 
-### 📦 Compression Percentage Formula
+- Server runs at `http://localhost:3000`
 
-```text
-Compression % = (1 - (Compressed Size / Original Size)) × 100%
+### Endpoints
+
+#### Health Check
+```bash
+curl http://localhost:3000/health
 ```
 
-**Where:**
-
-- **Original Size**: Size of the raw input file in bytes
-- **Compressed Size**: Number of chunks (each chunk = 1 byte)
-
-**Example:**
-For a 1000-byte file using 4-byte chunks:
-
-- Number of chunks = 1000 ÷ 4 = 250
-- Compressed Size = 250 bytes
-- Compression % = (1 - 250 ÷ 1000) × 100% = 75%
-
-### 🧮 Total Storage Formula
-
-```text
-Total Storage = Dictionary Size + Compressed Data Size
+#### Status
+```bash
+curl http://localhost:3000/status
 ```
 
-**Where:**
+#### Compress a File
+```bash
+curl -X POST http://localhost:3000/compress \
+  -F "file=@/path/to/your/file.png"
+```
+- Returns JSON with compression stats and a download URL for the mapping file.
 
-- **Dictionary Size**: As defined above
-- **Compressed Data Size**: 1 byte per chunk
+#### Download Mapping File
+```bash
+curl -O http://localhost:3000/files/{file_id}
+```
+- Downloads the mapping file for the compressed file.
 
-### 🧩 Key Constraints
+---
 
-- **Max Dictionary Size**: 255 unique chunks (limited by u8)
-- **Chunk Size Range**: 2–8 bytes (auto-optimized for >90% compression)
-- **ASCII Safety**: Files are converted to printable ASCII before compression
+## 🧩 Compression Pipeline
 
-### 💡 Why This System Achieves High Compression Rates
+1. **ASCII Conversion**: Converts all bytes to printable ASCII (0–126) for universal compatibility.
+2. **Chunking**: Splits the ASCII data into optimal-sized chunks (auto-optimized for best compression).
+3. **Dictionary Mapping**: Maps each unique chunk to a single byte (max 255 unique chunks).
+4. **Compression**: Replaces each chunk with its mapped byte, drastically reducing file size.
+5. **Mapping File**: Stores the mapping and metadata needed for full, lossless reconstruction.
+6. **On-chain Metadata**: Stores file hash, mapping, and compression stats on Starknet for verifiability.
 
-This mathematical breakdown explains why the system achieves high compression rates:
+---
 
-1. **Multi-byte to Single-byte Reduction**: By reducing multi-byte sequences to single-byte references
-2. **Minimal Dictionary Overhead**: Keeping dictionary size proportional to unique patterns
-3. **Optimized Chunk Sizing**: Auto-selecting chunk sizes that maximize compression efficiency
-4. **ASCII Encoding**: Ensuring data integrity while maintaining human-readable format
+## 📝 Smart Contract Integration
 
-The compression effectiveness depends on the repetition patterns in your data — files with more repeated sequences will achieve higher compression rates.
+- **On-chain**: Stores file hash, mapping, compression ratio, and metadata using a Cairo contract.
+- **Off-chain**: Stores the actual compressed file and mapping file (local or decentralized storage).
+- **Reconstruction**: Anyone can verify and reconstruct the file using the on-chain mapping and the off-chain compressed data.
+
+---
+
+## 🛠️ How to Use
+
+### CLI (for advanced users)
+- Run CLI commands for compression, mapping, and upload (see `src/cli.rs` for details).
+
+### HTTP Server (recommended)
+- Start the server: `cargo run --bin server`
+- Use `/compress` endpoint to upload and compress files
+- Use `/files/{file_id}` to download mapping files
+- Use `/status` and `/health` for monitoring
+
+### Web Frontend
+- A simple HTML frontend is provided in `public/index.html` for drag-and-drop uploads and status monitoring.
+
+---
+
+## ✅ What Has Been Built So Far
+
+- **Rust backend**: Full compression pipeline, mapping, and file handling
+- **Cairo smart contract**: On-chain storage of mapping and metadata
+- **HTTP server**: File upload, compression, and mapping download endpoints
+- **CLI**: Advanced command-line interface for power users
+- **Web frontend**: Simple drag-and-drop UI for file uploads
+- **Test coverage**: Unit tests for core compression and conversion logic
+- **Documentation**: Mathematical formulas, API docs, and usage guides
+
+---
+
+## 🔮 What’s Next / Planned
+
+- **IPFS/Arweave integration** for decentralized file storage
+- **User authentication and file ownership**
+- **Batch uploads and large file support**
+- **Gas optimization and calldata minimization**
+- **Advanced analytics and monitoring**
+- **Security audits and formal verification**
+- **Community engagement and open-source contributions**
+
+---
+
+## ⚠️ Technical Notes & Limitations
+
+- **Max dictionary size**: 255 unique chunks (u8 mapping)
+- **Chunk size**: Auto-optimized between 2–8 bytes
+- **ASCII safety**: All files are converted to printable ASCII before compression
+- **On-chain storage**: Only mapping and metadata are stored on-chain; actual file data is off-chain
+- **Compression effectiveness**: Highest for files with repeated patterns; less effective for highly random data
+
+---
+
+## 💬 Community & Support
+
+- Join the [Telegram group](https://t.me/+IfwMzjTrmI5kODk0) for questions, feedback, and contributions!
+
+---
+
+## 📜 License
+
+MIT or Apache 2.0 (choose your preferred open-source license)

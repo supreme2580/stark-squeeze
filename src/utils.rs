@@ -1,7 +1,7 @@
 use starknet::core::types::FieldElement;
 
 /// Converts a short string to a FieldElement for StarkNet
-pub fn short_string_to_felt(text: &str) -> Result<FieldElement, Box<dyn std::error::Error>> {
+pub fn short_string_to_felt(text: &str) -> Result<FieldElement, Box<dyn std::error::Error + Send + Sync>> {
     if text.len() > 31 {
         return Err("String too long to fit in felt".into());
     }

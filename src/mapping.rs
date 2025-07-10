@@ -79,6 +79,10 @@ impl fmt::Display for MappingError {
 
 impl Error for MappingError {}
 
+// Ensure MappingError is Send + Sync
+unsafe impl Send for MappingError {}
+unsafe impl Sync for MappingError {}
+
 impl From<serde_json::Error> for MappingError {
     fn from(err: serde_json::Error) -> Self {
         MappingError::SerializationError(err)

@@ -10,7 +10,7 @@ use url::Url;
 use dotenvy::dotenv;
 
 /// Loads the StarkNet account from the environment.
-pub async fn get_account() -> Result<SingleOwnerAccount<JsonRpcClient<HttpTransport>, LocalWallet>, Box<dyn std::error::Error>>
+pub async fn get_account() -> Result<SingleOwnerAccount<JsonRpcClient<HttpTransport>, LocalWallet>, Box<dyn std::error::Error + Send + Sync>>
 {
     dotenv().ok(); // Load .env
     let rpc_url = env::var("RPC_URL").map_err(|_| "RPC_URL not set in .env")?;
@@ -50,7 +50,7 @@ pub async fn upload_data(
     byte_values: Vec<FieldElement>,
     reconstruction_steps: Vec<FieldElement>,
     metadata: Vec<FieldElement>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenv().ok();
 
     let account = get_account().await?;

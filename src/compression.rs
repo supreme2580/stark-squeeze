@@ -61,6 +61,10 @@ impl fmt::Display for CompressionError {
 
 impl Error for CompressionError {}
 
+// Ensure CompressionError is Send + Sync
+unsafe impl Send for CompressionError {}
+unsafe impl Sync for CompressionError {}
+
 /// Finds the optimal chunk size that gives >90% compression
 pub fn find_optimal_chunk_size(data: &[u8]) -> Result<usize, CompressionError> {
     let mut best_chunk_size = 1;

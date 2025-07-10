@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stark Squeeze - File Compression</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .upload-area {
+            border: 3px dashed rgba(255, 255, 255, 0.5);
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .upload-area:hover {
+            border-color: rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .upload-area.dragover {
+            border-color: #4CAF50;
+            background: rgba(76, 175, 80, 0.2);
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+            margin: 10px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .progress {
+            width: 100%;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .success {
+            border-left: 5px solid #4CAF50;
+        }
+        
+        .error {
+            border-left: 5px solid #f44336;
+        }
+        
+        .status {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .status-item {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .status-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        
+        .file-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔤 Stark Squeeze</h1>
+        <p style="text-align: center; margin-bottom: 30px; font-size: 1.2em;">
+            Advanced file compression powered by Starknet
+        </p>
+        
+        <div class="status">
+            <div class="status-item">
+                <div class="status-value" id="serverStatus">Checking...</div>
+                <div>Server Status</div>
+            </div>
+            <div class="status-item">
+                <div class="status-value" id="dictionaryStatus">Checking...</div>
+                <div>Dictionary</div>
+            </div>
+            <div class="status-item">
+                <div class="status-value" id="filesProcessed">0</div>
+                <div>Files Processed</div>
+            </div>
+        </div>
+        
+        <div class="upload-area" id="uploadArea">
+            <div style="font-size: 3em; margin-bottom: 20px;">📁</div>
+            <h3>Drop your file here or click to browse</h3>
+            <p>Supports any file type - we'll compress it for you!</p>
+            <input type="file" id="fileInput" accept="*/*">
+            <button class="btn" onclick="document.getElementById('fileInput').click()">
+                Choose File
+            </button>
+        </div>
+        
+        <div class="progress hidden" id="progressContainer">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        
+        <div class="result hidden" id="resultContainer">
+            <h3 id="resultTitle">Compression Result</h3>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000';
+        
+        // Check server status on load
+        window.addEventListener('load', async () => {
+            await checkServerStatus();
+        });
+        
+        // Drag and drop functionality
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+        
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFile(e.target.files[0]);
+            }
+        });
+        
+        async function checkServerStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/status`);
+                const status = await response.json();
+                
+                document.getElementById('serverStatus').textContent = status.status;
+                document.getElementById('dictionaryStatus').textContent = status.dictionary_loaded ? 'Loaded' : 'Not Loaded';
+                document.getElementById('filesProcessed').textContent = status.total_files_processed;
+                
+                // Update colors based on status
+                const serverStatusEl = document.getElementById('serverStatus');
+                const dictStatusEl = document.getElementById('dictionaryStatus');
+                
+                serverStatusEl.style.color = status.status === 'running' ? '#4CAF50' : '#f44336';
+                dictStatusEl.style.color = status.dictionary_loaded ? '#4CAF50' : '#ff9800';
+                
+            } catch (error) {
+                console.error('Failed to check server status:', error);
+                document.getElementById('serverStatus').textContent = 'Offline';
+                document.getElementById('serverStatus').style.color = '#f44336';
+            }
+        }
+        
+        async function handleFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Show progress
+            document.getElementById('progressContainer').classList.remove('hidden');
+            document.getElementById('resultContainer').classList.add('hidden');
+            
+            // Simulate progress
+            let progress = 0;
+            const progressBar = document.getElementById('progressBar');
+            const progressInterval = setInterval(() => {
+                progress += Math.random() * 10;
+                if (progress > 90) progress = 90;
+                progressBar.style.width = progress + '%';
+            }, 100);
+            
+            try {
+                const response = await fetch(`${API_BASE}/compress`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
+                
+                const result = await response.json();
+                
+                // Hide progress
+                setTimeout(() => {
+                    document.getElementById('progressContainer').classList.add('hidden');
+                }, 500);
+                
+                // Show result
+                showResult(result);
+                
+                // Update server status
+                await checkServerStatus();
+                
+            } catch (error) {
+                clearInterval(progressInterval);
+                document.getElementById('progressContainer').classList.add('hidden');
+                
+                showResult({
+                    success: false,
+                    error: 'Failed to connect to server. Make sure the server is running on port 3000.'
+                });
+            }
+        }
+        
+        function showResult(result) {
+            const resultContainer = document.getElementById('resultContainer');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultContent = document.getElementById('resultContent');
+            
+            resultContainer.classList.remove('hidden');
+            resultContainer.className = 'result ' + (result.success ? 'success' : 'error');
+            
+            if (result.success) {
+                resultTitle.textContent = '✅ Compression Successful!';
+                resultContent.innerHTML = `
+                    <div class="file-info">
+                        <strong>File URL:</strong> <a href="${result.file_url}" target="_blank" style="color: #4CAF50;">${result.file_url}</a>
+                    </div>
+                    <div class="file-info">
+                        <strong>Compression Ratio:</strong> ${result.compression_ratio?.toFixed(1)}%
+                    </div>
+                    <div class="file-info">
+                        <strong>Original Size:</strong> ${formatBytes(result.original_size)}
+                    </div>
+                    <div class="file-info">
+                        <strong>Compressed Size:</strong> ${formatBytes(result.compressed_size)}
+                    </div>
+                    <div class="file-info">
+                        <strong>Mapping File:</strong> ${result.mapping_file}
+                    </div>
+                `;
+            } else {
+                resultTitle.textContent = '❌ Compression Failed';
+                resultContent.innerHTML = `
+                    <div class="file-info">
+                        <strong>Error:</strong> ${result.error}
+                    </div>
+                `;
+            }
+        }
+        
+        function formatBytes(bytes) {
+            if (!bytes) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html> 
