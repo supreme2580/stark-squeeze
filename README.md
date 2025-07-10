@@ -18,18 +18,57 @@
 
 ## 🏗️ High-Level Architecture & Flow
 
+> **Note:** If you do not see a rendered diagram below, please view this README on a platform that supports Mermaid diagrams, or refer to the ASCII diagram below.
+
+### ASCII Diagram (Always Visible)
+
+```
+File Upload (CLI/Web)
+        |
+        v
+ASCII-safe conversion
+        |
+        v
+Chunking & Dictionary Mapping
+        |
+        v
+Compression
+        |
+        +-------------------+
+        |                   |
+        v                   v
+Store mapping &      Store compressed
+metadata on-chain    file off-chain
+        |                   |
+        v                   v
+   On-chain:           Off-chain:
+   file hash,          compressed file,
+   mapping,            mapping file
+   metadata                 |
+        |                   |
+        +---------+---------+
+                  |
+                  v
+        User retrieves file via hash/ID
+                  |
+                  v
+        Reconstruction: decompress, reverse mapping, restore original file
+```
+
+### Mermaid Diagram (Rich Display, if supported)
+
 ```mermaid
-graph TD;
-    A[User uploads file (CLI/Web)] --> B[ASCII-safe conversion];
-    B --> C[Chunking & Dictionary Mapping];
-    C --> D[Compression];
-    D --> E[Store mapping & metadata on Starknet];
-    D --> F[Store compressed file off-chain];
-    E --> G[On-chain: file hash, mapping, metadata];
-    F --> H[Off-chain: compressed file, mapping file];
-    G --> I[User retrieves file via hash/ID];
-    H --> I;
-    I --> J[Reconstruction: decompress, reverse mapping, restore original file];
+graph TD
+    A[User uploads file (CLI/Web)] --> B[ASCII-safe conversion]
+    B --> C[Chunking & Dictionary Mapping]
+    C --> D[Compression]
+    D --> E[Store mapping & metadata on Starknet]
+    D --> F[Store compressed file off-chain]
+    E --> G[On-chain: file hash, mapping, metadata]
+    F --> H[Off-chain: compressed file, mapping file]
+    G --> I[User retrieves file via hash/ID]
+    H --> I
+    I --> J[Reconstruction: decompress, reverse mapping, restore original file]
 ```
 
 ---
