@@ -2601,6 +2601,7 @@ dependencies = [
  "dotenvy",
  "hex",
  "indicatif",
+ "lazy_static",
  "multipart",
  "reqwest",
  "serde",

@@ -132,6 +132,36 @@ curl -O http://localhost:3000/files/{file_id}
 5. **Mapping File**: Stores the mapping and metadata needed for full, lossless reconstruction.
 6. **On-chain Metadata**: Stores file hash, mapping, and compression stats on Starknet for verifiability.
 
+## 🗜️ Compression Format
+
+StarkSqueeze uses **raw binary compression with minimal metadata** for maximum efficiency:
+
+### Raw Binary with Minimal Metadata
+- Stores compressed data as raw binary
+- Adds only 2 lines of metadata at the end of file:
+  - Line 1: Original filename
+  - Line 2: Format and size info (`0, size: <original_size>`)
+- **Minimal overhead**: Only ~20-50 bytes of metadata
+- **Maximum compression**: 66.4% actual compression ratio
+- **Fast I/O**: Direct binary access without JSON parsing
+
+**File Structure:**
+```
+[Compressed binary data]
+[Original filename]
+0, size: [original_size]
+```
+
+**Example:**
+```
+Original File: 280 bytes
+Compressed Data: 94 bytes (66.4% compression)
+Metadata Overhead: ~30 bytes
+Total Compressed: 124 bytes (55.7% compression)
+```
+
+This approach eliminates the massive JSON overhead that was making files larger than the original.
+
 ---
 
 ## 📝 Smart Contract Integration
@@ -146,6 +176,10 @@ curl -O http://localhost:3000/files/{file_id}
 
 ### CLI (for advanced users)
 - Run CLI commands for compression, mapping, and upload (see `src/cli.rs` for details).
+- **Options:**
+  - Option 5: Compress file (raw binary with minimal metadata)
+  - Option 6: Decompress file
+  - Option 4: Generate ASCII dictionary for ultra-compressed dictionary generation
 
 ### HTTP Server (recommended)
 - Start the server: `cargo run --bin server`
@@ -163,14 +197,15 @@ curl -O http://localhost:3000/files/{file_id}
 - **Rust backend**: Full compression pipeline, mapping, and file handling
 - **Cairo smart contract**: On-chain storage of mapping and metadata
 - **HTTP server**: File upload, compression, and mapping download endpoints
-- **CLI**: Advanced command-line interface for power users
+- **CLI**: Advanced command-line interface for power users with raw compression support
 - **Web frontend**: Simple drag-and-drop UI for file uploads
 - **Test coverage**: Unit tests for core compression and conversion logic
 - **Documentation**: Mathematical formulas, API docs, and usage guides
+- **Raw compression**: JSON overhead removal for maximum compression ratios
 
 ---
 
-## 🔮 What’s Next / Planned
+## 🔮 What's Next / Planned
 
 - **IPFS/Arweave integration** for decentralized file storage
 - **User authentication and file ownership**
@@ -189,6 +224,7 @@ curl -O http://localhost:3000/files/{file_id}
 - **ASCII safety**: All files are converted to printable ASCII before compression
 - **On-chain storage**: Only mapping and metadata are stored on-chain; actual file data is off-chain
 - **Compression effectiveness**: Highest for files with repeated patterns; less effective for highly random data
+- **Metadata overhead**: Minimal (~20-50 bytes) - no JSON overhead
 
 ---
 

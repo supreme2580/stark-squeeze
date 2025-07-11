@@ -25,6 +25,7 @@ dotenvy = "0.15"
 thiserror = "2.0.12"
 hex = "0.4.3"
 anyhow = "1"
+lazy_static = "1.4"
 
 # Web server dependencies
 axum = { version = "0.7", features = ["multipart", "macros"] }
