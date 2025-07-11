@@ -201,3 +201,20 @@ curl -O http://localhost:3000/files/{file_id}
 ## 📜 License
 
 MIT or Apache 2.0 (choose your preferred open-source license)
+
+# Why 5:1 (80%) Compression Instead of 10:1 (90%)?
+
+This project uses a dictionary-based compression scheme that maps every possible 5-character ASCII chunk to a single byte, achieving a 5:1 compression ratio (80% compression). While a 10:1 (90%) compression ratio would be ideal, it is not feasible in practice due to the astronomical size of the required dictionary.
+
+- **5:1 (80%) Compression:**
+  - Uses 5-character chunks.
+  - Requires a dictionary with 128^5 = 33,554,432 entries (about 32MB if stored efficiently).
+  - This is practical to generate, store, and use on modern hardware.
+
+- **10:1 (90%) Compression:**
+  - Would require 10-character chunks.
+  - Requires a dictionary with 128^10 ≈ 1.18e21 entries (about 13 zettabytes).
+  - This is far beyond the storage and computational capabilities of any current or foreseeable system.
+
+**In summary:**
+We use 5:1 compression because it is the best trade-off between high compression and practical feasibility. Attempting true 90% compression with a universal dictionary is not possible with today's technology.
