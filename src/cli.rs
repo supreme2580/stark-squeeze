@@ -17,6 +17,48 @@ use std::fs;
 use serde_json::{json, Value};
 use crate::config::get_config;
 
+/// Reverses ASCII conversion mapping to restore original bytes
+fn reverse_ascii_conversion(ascii_byte: u8) -> u8 {
+    // Reverse the mapping from ascii_converter.rs
+    match ascii_byte {
+        b'0' => 0,    // NULL
+        b'1' => 1,    // SOH
+        b'2' => 2,    // STX
+        b'3' => 3,    // ETX
+        b'4' => 4,    // EOT
+        b'5' => 5,    // ENQ
+        b'6' => 6,    // ACK
+        b'7' => 7,    // BEL
+        b'b' => 8,    // BS (backspace)
+        b' ' => {
+            // Space could be TAB (9), LF (10), or CR (13)
+            // We'll default to LF (10) as it's most common
+            10
+        },
+        b'v' => 11,   // VT (vertical tab)
+        b'f' => 12,   // FF (form feed) - note: conflicts with 15, we'll use 12
+        b'e' => 14,   // SO
+        b'E' => 27,   // ESC
+        b'D' => 127,  // DEL
+        // Characters A-K map to 16-26
+        b'A'..=b'K' => 16 + (ascii_byte - b'A'),
+        // Characters L-O map to 28-31
+        b'L'..=b'O' => 28 + (ascii_byte - b'L'),
+        // Extended ASCII (128-255) mapped to 48-123
+        48..=123 => {
+            if ascii_byte >= 48 && ascii_byte <= 122 {
+                128 + ((ascii_byte - 48) % 75)
+            } else {
+                ascii_byte // Fallback: return as-is
+            }
+        },
+        // Printable ASCII (32-126) should remain unchanged
+        32..=126 => ascii_byte,
+        // Fallback for any unmapped characters
+        _ => ascii_byte,
+    }
+}
+
 /// Prints a styled error message
 fn print_error(context: &str, error: &dyn std::fmt::Display) {
     eprintln!("{} {}: {}", "Error".red().bold(), context, error);
@@ -1288,16 +1330,47 @@ pub async fn decompress_file_cli() {
         progress_bar.set_message(format!("Decompressing... {} chunks", processed_bytes));
     }
     
-    progress_bar.finish_with_message("Decompression complete!".green().to_string());
+    progress_bar.finish_with_message("Dictionary decompression complete!".green().to_string());
     
-    // Write decompressed file
-    if let Err(e) = fs::write(&output_file, &decompressed_bytes) {
+    // The decompressed_bytes now contain the binary string representation
+    // We need to convert this binary string back to actual bytes
+    
+    println!("{}", "🔄 Converting binary string to ASCII bytes...".yellow().bold());
+    
+    // Convert the decompressed bytes (which are actually binary string characters) to a string
+    let binary_string = String::from_utf8_lossy(&decompressed_bytes);
+    
+    // Convert binary string back to ASCII bytes
+    let mut ascii_bytes = Vec::new();
+    for chunk in binary_string.as_bytes().chunks(8) {
+        if chunk.len() == 8 {
+            let mut byte = 0u8;
+            for (i, &bit) in chunk.iter().enumerate() {
+                if bit == b'1' {
+                    byte |= 1 << (7 - i);
+                }
+            }
+            ascii_bytes.push(byte);
+        }
+    }
+    
+    println!("{}", "🔄 Reversing ASCII conversion...".yellow().bold());
+    
+    // Reverse ASCII conversion to get original bytes
+    let mut original_bytes = ascii_bytes;
+    for byte in &mut original_bytes {
+        // Reverse the ASCII conversion mapping
+        *byte = reverse_ascii_conversion(*byte);
+    }
+    
+    // Write the final decompressed file
+    if let Err(e) = fs::write(&output_file, &original_bytes) {
         print_error("Failed to write decompressed file", &e);
         return;
     }
     
     // Calculate decompression metrics
-    let decompressed_size = decompressed_bytes.len();
+    let decompressed_size = original_bytes.len();
     let expansion_ratio = (decompressed_size as f64 / compressed_bytes.len() as f64) as f64;
     
     println!();
