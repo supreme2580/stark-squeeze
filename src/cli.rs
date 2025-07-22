@@ -1097,64 +1097,57 @@ pub async fn compress_file_cli() {
     progress_bar.set_message("Converting to ASCII...".to_string());
     progress_bar.inc(original_size as u64 / 4);
     
-    // STEP 2: Convert ASCII to binary string
-    println!("{}", "STEP 2: Converting ASCII to binary string...".cyan().bold());
-    let binary_string: String = ascii_content.iter()
-        .map(|&byte| format!("{:08b}", byte))
-        .collect();
-    
-    // Save debug file and show first 200 values
-    if config.debug.save_debug_files {
-        fs::write("debug_binary_string.txt", &binary_string).expect("Failed to write debug_binary_string.txt");
-    }
-    
-    println!("First 200 characters of binary string:");
-    for (i, ch) in binary_string.chars().take(200).enumerate() {
-        if i % 80 == 0 && i > 0 { println!(); }
-        print!("{}", ch);
-    }
-    println!("\n");
-    
-    progress_bar.set_message("Converting to binary string...".to_string());
-    progress_bar.inc(original_size as u64 / 4);
-    
-    // STEP 3: Dictionary compression  
-    println!("{}", "STEP 3: Dictionary compression...".cyan().bold());
-    let chunk_size = config.dictionary.ultra_compressed.length; // 3 characters = 1 byte (66.7% compression for fast testing)
+    // STEP 2: Dictionary compression using ASCII combinations
+    println!("{}", "STEP 2: Dictionary compression using ASCII combinations...".cyan().bold());
+    let chunk_size = config.dictionary.ultra_compressed.length; // 3 characters = 1 byte
     let mut compressed_bytes = Vec::new();
     let mut processed_bytes = 0;
     
-    for chunk_start in (0..binary_string.len()).step_by(chunk_size) {
-        let chunk_end = std::cmp::min(chunk_start + chunk_size, binary_string.len());
-        let chunk_str = &binary_string[chunk_start..chunk_end];
+    // Process ASCII content in chunks
+    for chunk_start in (0..ascii_content.len()).step_by(chunk_size) {
+        let chunk_end = std::cmp::min(chunk_start + chunk_size, ascii_content.len());
+        let chunk_bytes = &ascii_content[chunk_start..chunk_end];
         
-        // Pad chunk to exact size if needed
-        let mut padded_chunk = chunk_str.to_string();
-        while padded_chunk.len() < chunk_size {
-            padded_chunk.push('0'); // Pad with zeros
+        // Create ASCII string from chunk bytes
+        let mut chunk_string = String::new();
+        for &byte in chunk_bytes {
+            chunk_string.push(byte as char);
+        }
+        
+        // Pad chunk to exact size if needed (pad with null characters)
+        while chunk_string.len() < chunk_size {
+            chunk_string.push('\0');
         }
         
         // Look up this combination in the dictionary
-        if let Some(value) = combinations.get(&padded_chunk) {
+        if let Some(value) = combinations.get(&chunk_string) {
             if let Some(char_value) = value.as_str() {
                 if let Some(byte_value) = char_value.chars().next() {
                     compressed_bytes.push(byte_value as u8);
                 } else {
-                    // Fallback: use first byte of chunk as ASCII
-                    compressed_bytes.push(padded_chunk.chars().next().unwrap_or('0') as u8);
+                    // Fallback: use average of chunk bytes
+                    let avg = chunk_bytes.iter().map(|&b| b as u32).sum::<u32>() / chunk_bytes.len() as u32;
+                    compressed_bytes.push(avg as u8);
                 }
             } else {
-                // Fallback: use first byte of chunk as ASCII
-                compressed_bytes.push(padded_chunk.chars().next().unwrap_or('0') as u8);
+                // Fallback: use average of chunk bytes
+                let avg = chunk_bytes.iter().map(|&b| b as u32).sum::<u32>() / chunk_bytes.len() as u32;
+                compressed_bytes.push(avg as u8);
             }
         } else {
-            // If not found in dictionary, use first character of chunk as ASCII
-            compressed_bytes.push(padded_chunk.chars().next().unwrap_or('0') as u8);
+            // If not found in dictionary, use average of chunk bytes as fallback
+            let avg = chunk_bytes.iter().map(|&b| b as u32).sum::<u32>() / chunk_bytes.len() as u32;
+            compressed_bytes.push(avg as u8);
         }
         
         processed_bytes += chunk_end - chunk_start;
         progress_bar.set_position(processed_bytes as u64);
         progress_bar.set_message(format!("Compressing... {} chunks", compressed_bytes.len()));
+    }
+    
+    // Save debug file
+    if config.debug.save_debug_files {
+        fs::write("debug_compressed.bin", &compressed_bytes).expect("Failed to write debug_compressed.bin");
     }
     
     println!("First 200 compressed bytes:");
