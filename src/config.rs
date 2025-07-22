@@ -519,11 +519,13 @@ fn create_default_config() -> Config {
             },
         },
         debug: DebugConfig {
-            save_debug_files: false,
+            save_debug_files: true,
             debug_files: vec![
                 "debug_original.bin".to_string(),
                 "debug_ascii.bin".to_string(),
                 "debug_binary_string.txt".to_string(),
+                "debug_reconstructed_binary_string.txt".to_string(),
+                "debug_reconstructed_ascii.bin".to_string(),
             ],
         },
         performance: PerformanceConfig {

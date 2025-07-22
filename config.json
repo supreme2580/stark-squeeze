@@ -163,11 +163,13 @@
     }
   },
   "debug": {
-    "save_debug_files": false,
+    "save_debug_files": true,
     "debug_files": [
       "debug_original.bin",
       "debug_ascii.bin",
-      "debug_binary_string.txt"
+      "debug_binary_string.txt",
+      "debug_reconstructed_binary_string.txt",
+      "debug_reconstructed_ascii.bin"
     ]
   },
   "performance": {
