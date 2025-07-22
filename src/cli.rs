@@ -1232,7 +1232,7 @@ pub async fn decompress_file_cli() {
     println!();
     
     let input_file = match Input::<String>::new()
-        .with_prompt("Enter compressed file path")
+        .with_prompt("Enter compressed file path (.txt)")
         .interact_text() {
             Ok(s) => s,
             Err(e) => {
@@ -1249,21 +1249,10 @@ pub async fn decompress_file_cli() {
             Err(_) => "ascii_combinations.json".to_string(),
     };
     
-    let output_file = match Input::<String>::new()
-        .with_prompt("Enter output decompressed file path")
-        .interact_text() {
-            Ok(s) => s,
-            Err(e) => {
-                print_error("Failed to read input", &e);
-                return;
-            }
-    };
-    
     println!();
     println!("{}", "📊 Decompression Parameters:".yellow().bold());
     print_info("Input file", &input_file);
     print_info("Dictionary file", &dictionary_file);
-    print_info("Output file", &output_file);
     print_info("Format", "Raw binary with minimal metadata");
     
     // Read the compressed file
@@ -1287,20 +1276,25 @@ pub async fn decompress_file_cli() {
         return;
     }
     
-    let original_filename = lines[lines.len() - 2];
+    let file_extension = lines[lines.len() - 2];
     let size_info = lines[lines.len() - 1];
     
     // Parse size info
-    let original_size = if size_info.starts_with("0, size: ") {
-        size_info.replace("0, size: ", "").parse::<usize>().unwrap_or(0)
+    let original_size = size_info.parse::<usize>().unwrap_or(0);
+    
+    // Generate output filename: remove .txt extension and add original extension
+    let base_name = input_file.strip_suffix(".txt").unwrap_or(&input_file);
+    let output_file = if file_extension == "unknown" {
+        format!("{}_decompressed", base_name)
     } else {
-        0
+        format!("{}.{}", base_name, file_extension)
     };
     
     println!();
     println!("{}", "📋 File Metadata:".yellow().bold());
-    print_info("Original filename", original_filename);
+    print_info("File extension", file_extension);
     print_info("Original size", format!("{} bytes", original_size));
+    print_info("Output file", &output_file);
     
     // Read the dictionary
     let dictionary_content = match fs::read_to_string(&dictionary_file) {
@@ -1338,6 +1332,13 @@ pub async fn decompress_file_cli() {
     let compressed_data_str = compressed_data_lines.join("\n");
     let compressed_bytes: Vec<u8> = compressed_data_str.bytes().collect();
     
+    println!("First 200 compressed bytes:");
+    for (i, &byte) in compressed_bytes.iter().take(200).enumerate() {
+        if i % 20 == 0 && i > 0 { println!(); }
+        print!("{:3} ", byte);
+    }
+    println!("\n");
+    
     // Create progress bar
     let progress_bar = ProgressBar::new(compressed_bytes.len() as u64);
     progress_bar.set_style(
@@ -1347,9 +1348,10 @@ pub async fn decompress_file_cli() {
             .progress_chars("#>-"),
     );
     
-    // Decompress the data
+    // STEP 1: Dictionary decompression
+    println!("{}", "STEP 1: Dictionary decompression...".cyan().bold());
     let chunk_size = config.dictionary.ultra_compressed.length;
-    let mut decompressed_bytes = Vec::new();
+    let mut binary_string = String::new();
     let mut processed_bytes = 0;
     
     for &compressed_byte in &compressed_bytes {
@@ -1365,12 +1367,10 @@ pub async fn decompress_file_cli() {
         }
         
         if let Some(chunk_str) = found_chunk {
-            // Convert chunk string back to bytes
-            let chunk_bytes: Vec<u8> = chunk_str.chars().map(|c| c as u8).collect();
-            decompressed_bytes.extend_from_slice(&chunk_bytes);
+            binary_string.push_str(&chunk_str);
         } else {
-            // Fallback: use the compressed byte as a single character
-            decompressed_bytes.push(compressed_byte);
+            // Fallback: convert byte to binary 
+            binary_string.push_str(&format!("{:08b}", compressed_byte));
         }
         
         processed_bytes += 1;
@@ -1378,17 +1378,23 @@ pub async fn decompress_file_cli() {
         progress_bar.set_message(format!("Decompressing... {} chunks", processed_bytes));
     }
     
+    // Save debug file and show first 200 values
+    if config.debug.save_debug_files {
+        fs::write("debug_reconstructed_binary_string.txt", &binary_string).expect("Failed to write debug_reconstructed_binary_string.txt");
+    }
+    
+    println!("First 200 characters of reconstructed binary string:");
+    for (i, ch) in binary_string.chars().take(200).enumerate() {
+        if i % 80 == 0 && i > 0 { println!(); }
+        print!("{}", ch);
+    }
+    println!("\n");
+    
     progress_bar.finish_with_message("Dictionary decompression complete!".green().to_string());
     
-    // The decompressed_bytes now contain the binary string representation
-    // We need to convert this binary string back to actual bytes
+    // STEP 2: Convert binary string back to ASCII bytes
+    println!("{}", "STEP 2: Converting binary string to ASCII bytes...".cyan().bold());
     
-    println!("{}", "🔄 Converting binary string to ASCII bytes...".yellow().bold());
-    
-    // Convert the decompressed bytes (which are actually binary string characters) to a string
-    let binary_string = String::from_utf8_lossy(&decompressed_bytes);
-    
-    // Convert binary string back to ASCII bytes
     let mut ascii_bytes = Vec::new();
     for chunk in binary_string.as_bytes().chunks(8) {
         if chunk.len() == 8 {
@@ -1402,14 +1408,33 @@ pub async fn decompress_file_cli() {
         }
     }
     
-    println!("{}", "🔄 Reversing ASCII conversion...".yellow().bold());
+    // Save debug file and show first 200 values
+    if config.debug.save_debug_files {
+        fs::write("debug_reconstructed_ascii.bin", &ascii_bytes).expect("Failed to write debug_reconstructed_ascii.bin");
+    }
     
-    // Reverse ASCII conversion to get original bytes
+    println!("First 200 reconstructed ASCII bytes:");
+    for (i, &byte) in ascii_bytes.iter().take(200).enumerate() {
+        if i % 20 == 0 && i > 0 { println!(); }
+        print!("{:3} ", byte);
+    }
+    println!("\n");
+    
+    // STEP 3: Reverse ASCII conversion to get original bytes
+    println!("{}", "STEP 3: Reversing ASCII conversion...".cyan().bold());
+    
     let mut original_bytes = ascii_bytes;
     for byte in &mut original_bytes {
         // Reverse the ASCII conversion mapping
         *byte = reverse_ascii_conversion(*byte);
     }
+    
+    println!("First 200 final original bytes:");
+    for (i, &byte) in original_bytes.iter().take(200).enumerate() {
+        if i % 20 == 0 && i > 0 { println!(); }
+        print!("{:3} ", byte);
+    }
+    println!("\n");
     
     // Write the final decompressed file
     if let Err(e) = fs::write(&output_file, &original_bytes) {
