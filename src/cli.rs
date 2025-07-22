@@ -16,6 +16,8 @@ use crate::ipfs_client::pin_file_to_ipfs;
 use std::fs;
 use serde_json::{json, Value};
 use crate::config::get_config;
+use crate::compression::{compress_file_with_10to3_dict, decompress_file_with_10to3_dict};
+use std::collections::HashMap;
 
 /// Reverses ASCII conversion mapping to restore original bytes
 fn reverse_ascii_conversion(ascii_byte: u8) -> u8 {
@@ -145,7 +147,7 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
 
     // Compress the data
     let bytes = binary_string.as_bytes();
-    let result = match crate::compression::compress_file(bytes) {
+    let result = match crate::compression::compress_file(&bytes) {
         Ok(result) => result,
         Err(e) => {
             print_error("Failed in compression step", &e);
@@ -162,7 +164,9 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
 
     // Generate hash from the compressed data
     let mut hasher = Sha256::new();
-    hasher.update(&encoded_data);
+    // Convert encoded_data (Vec<u16>) to Vec<u8> for hashing and other uses
+    let encoded_data_bytes: Vec<u8> = encoded_data.iter().flat_map(|x| x.to_be_bytes()).collect();
+    hasher.update(&encoded_data_bytes);
     let hash = hasher.finalize();
 
     // Use a short hash (first 8 bytes, hex-encoded) as the URI
@@ -234,7 +238,7 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
     // IPFS Pinning after upload completion
     println!("\n{}", "🔗 Starting IPFS pinning...".blue().bold());
     
-    match pin_file_to_ipfs(&encoded_data, &format!("{}.compressed", file_path)).await {
+    match pin_file_to_ipfs(&encoded_data_bytes, &format!("{}.compressed", file_path)).await {
         Ok(ipfs_cid) => {
             println!("✅ Pinned to IPFS: {}", ipfs_cid.green().bold());
             println!("🌐 IPFS Gateway: https://gateway.pinata.cloud/ipfs/{}", ipfs_cid);
@@ -249,7 +253,7 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
     let minimal_mapping = create_minimal_mapping(
         mapping,
         &ascii_stats,
-        &encoded_data,
+        &encoded_data_bytes,
     );
 
     // Save the minimal mapping to a JSON file
@@ -970,42 +974,41 @@ pub async fn generate_ultra_compressed_ascii_combinations_cli() {
     println!("- Ready for file compression using option 8");
 }
 
-/// Compresses a file using the ASCII dictionary with minimal metadata at the end
+pub async fn generate_binary_dictionary_10to3_cli() {
+    use base64::{engine::general_purpose, Engine as _};
+    println!("{}", "🔢 Generating 10:3 Binary Dictionary (1024 10-bit patterns, base64 codes)".blue().bold());
+    let charset = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut dict = std::collections::HashMap::new();
+    for i in 0..1024u16 {
+        // 10 bits to 2 bytes, then encode to 3 base64 chars
+        let bytes = i.to_be_bytes();
+        let b64 = general_purpose::STANDARD.encode(&bytes);
+        // base64 encodes 2 bytes to 4 chars, but we only need 3 chars for 10 bits
+        let code = &b64[0..3];
+        dict.insert(format!("{:010b}", i), code.to_string());
+    }
+    let json = serde_json::to_string_pretty(&dict).unwrap();
+    let filename = "binary_dictionary_10to3.json";
+    if let Err(e) = std::fs::write(filename, json) {
+        print_error("Failed to write binary dictionary", &e);
+        return;
+    }
+    println!("Dictionary saved to {} ({} entries)", filename, dict.len());
+}
+
 pub async fn compress_file_cli() {
-    let config = get_config();
-    println!("{}", "🗜️ File Compression (Raw Binary with Minimal Metadata)".blue().bold());
+    println!("{}", "🗜️ File Compression (10-bit Binary Dictionary)".blue().bold());
     println!();
-    
     let input_file = match Input::<String>::new()
         .with_prompt("Enter input file path to compress")
         .interact_text() {
             Ok(s) => s,
             Err(e) => {
-                print_error("Failed to read input", &e);
+                print_error("Failed to read input file", &e);
                 return;
             }
     };
-    
-    let dictionary_file = match Input::<String>::new()
-        .with_prompt("Enter ASCII dictionary file path (ascii_combinations.json)")
-        .default("ascii_combinations.json".to_string())
-        .interact_text() {
-            Ok(s) => s,
-            Err(_) => "ascii_combinations.json".to_string(),
-    };
-    
-    // Automatically generate output filename (same name with .txt extension)
-    let output_file = format!("{}.txt", input_file);
-    
-    println!();
-    println!("{}", "📊 Compression Parameters:".yellow().bold());
-    print_info("Input file", &input_file);
-    print_info("Dictionary file", &dictionary_file);
-    print_info("Output file", &output_file);
-    print_info("Format", "Raw binary with minimal metadata");
-    print_info("Target compression", format!("{:.1}% ({} chars → 1 byte)", config.dictionary.ultra_compressed.compression_ratio, config.dictionary.ultra_compressed.length));
-    
-    // Read the input file
+    let output_file = format!("{}.b10t3", input_file);
     let input_content = match fs::read(&input_file) {
         Ok(content) => content,
         Err(e) => {
@@ -1013,519 +1016,90 @@ pub async fn compress_file_cli() {
             return;
         }
     };
-    
     let original_size = input_content.len();
-    print_info("Original file size", format!("{:.2} MB", original_size as f64 / (1024.0 * 1024.0)));
-    
-    // Get file extension
-    let file_extension = std::path::Path::new(&input_file)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("unknown")
-        .to_string();
-    
-    // Read the dictionary
-    let dictionary_content = match fs::read_to_string(&dictionary_file) {
-        Ok(content) => content,
+    print_info("Original file size", format!("{:.2} KB", original_size as f64 / 1024.0));
+    // Compress
+    let compressed_text = match compress_file_with_10to3_dict(&input_content, "binary_dictionary_10to3.json") {
+        Ok(compressed) => compressed,
         Err(e) => {
-            print_error("Failed to read dictionary file", &e);
+            print_error("Compression failed", &e);
             return;
         }
     };
-    
-    let dictionary_data: Value = match serde_json::from_str(&dictionary_content) {
-        Ok(data) => data,
-        Err(e) => {
-            print_error("Failed to parse dictionary JSON", &e);
-            return;
-        }
-    };
-    
-    // Extract dictionary combinations
-    let combinations = match dictionary_data["combinations"].as_object() {
-        Some(obj) => obj,
-        None => {
-            print_error("Invalid dictionary format", &"No combinations object found");
-            return;
-        }
-    };
-    
-    println!();
-    println!("{}", "🔤 Dictionary Loaded:".yellow().bold());
-    print_info("Dictionary size", combinations.len());
-    print_info("Combination length", dictionary_data["metadata"]["length"].as_u64().unwrap_or(0));
-    
-    // Create progress bar
-    let progress_bar = ProgressBar::new(original_size as u64);
-    progress_bar.set_style(
-        ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
-            .unwrap()
-            .progress_chars("#>-"),
-    );
-    
-    // STEP 1: Convert input file to ASCII
-    println!("\n{}", "STEP 1: Converting to printable ASCII...".cyan().bold());
-    let (ascii_content, _ascii_stats) = match convert_to_printable_ascii(&input_content) {
-        Ok(result) => result,
-        Err(e) => {
-            print_error("Failed to convert file to ASCII", &e);
-            return;
-        }
-    };
-    
-    // Save debug file and show first 200 values
-    if config.debug.save_debug_files {
-        fs::write("debug_original.bin", &input_content).expect("Failed to write debug_original.bin");
-        fs::write("debug_ascii.bin", &ascii_content).expect("Failed to write debug_ascii.bin");
-    }
-    
-    println!("First 200 original bytes:");
-    for (i, &byte) in input_content.iter().take(200).enumerate() {
-        if i % 20 == 0 && i > 0 { println!(); }
-        print!("{:3} ", byte);
-    }
-    println!("\n");
-    
-    println!("First 200 ASCII converted bytes:");
-    for (i, &byte) in ascii_content.iter().take(200).enumerate() {
-        if i % 20 == 0 && i > 0 { println!(); }
-        print!("{:3} ", byte);
-    }
-    println!("\n");
-    
-    progress_bar.set_message("Converting to ASCII...".to_string());
-    progress_bar.inc(original_size as u64 / 4);
-    
-    // STEP 2: Convert ASCII to binary string
-    println!("{}", "STEP 2: Converting ASCII to binary string...".cyan().bold());
-    let binary_string: String = ascii_content.iter()
-        .map(|&byte| format!("{:08b}", byte))
-        .collect();
-    
-    // Save debug file and show first 200 values
-    if config.debug.save_debug_files {
-        fs::write("debug_binary_string.txt", &binary_string).expect("Failed to write debug_binary_string.txt");
-    }
-    
-    println!("First 200 characters of binary string:");
-    for (i, ch) in binary_string.chars().take(200).enumerate() {
-        if i % 80 == 0 && i > 0 { println!(); }
-        print!("{}", ch);
-    }
-    println!("\n");
-    
-    progress_bar.set_message("Converting to binary string...".to_string());
-    progress_bar.inc(original_size as u64 / 4);
-    
-    // STEP 3: Dictionary compression  
-    println!("{}", "STEP 3: Dictionary compression...".cyan().bold());
-    let chunk_size = config.dictionary.ultra_compressed.length; // 3 characters = 1 byte (66.7% compression for fast testing)
-    let mut compressed_bytes = Vec::new();
-    let mut processed_bytes = 0;
-    
-    for chunk_start in (0..binary_string.len()).step_by(chunk_size) {
-        let chunk_end = std::cmp::min(chunk_start + chunk_size, binary_string.len());
-        let chunk_str = &binary_string[chunk_start..chunk_end];
-        
-        // Pad chunk to exact size if needed
-        let mut padded_chunk = chunk_str.to_string();
-        while padded_chunk.len() < chunk_size {
-            padded_chunk.push('0'); // Pad with zeros
-        }
-        
-        // Look up this combination in the dictionary
-        if let Some(value) = combinations.get(&padded_chunk) {
-            if let Some(char_value) = value.as_str() {
-                if let Some(byte_value) = char_value.chars().next() {
-                    compressed_bytes.push(byte_value as u8);
-                } else {
-                    // Fallback: use first byte of chunk as ASCII
-                    compressed_bytes.push(padded_chunk.chars().next().unwrap_or('0') as u8);
-                }
-            } else {
-                // Fallback: use first byte of chunk as ASCII
-                compressed_bytes.push(padded_chunk.chars().next().unwrap_or('0') as u8);
-            }
-        } else {
-            // If not found in dictionary, use first character of chunk as ASCII
-            compressed_bytes.push(padded_chunk.chars().next().unwrap_or('0') as u8);
-        }
-        
-        processed_bytes += chunk_end - chunk_start;
-        progress_bar.set_position(processed_bytes as u64);
-        progress_bar.set_message(format!("Compressing... {} chunks", compressed_bytes.len()));
-    }
-    
-    println!("First 200 compressed bytes:");
-    for (i, &byte) in compressed_bytes.iter().take(200).enumerate() {
-        if i % 20 == 0 && i > 0 { println!(); }
-        print!("{:3} ", byte);
-    }
-    println!("\n");
-    
-    progress_bar.finish_with_message("Compression complete!".green().to_string());
-    
-    // Create minimal metadata (last 2 lines of file)
-    let metadata_line1 = format!("{}", file_extension);
-    let metadata_line2 = format!("{}", original_size);
-    
-    // Combine compressed data with minimal metadata
-    let mut final_data = compressed_bytes.clone();
-    final_data.extend_from_slice(b"\n");
-    final_data.extend_from_slice(metadata_line1.as_bytes());
-    final_data.extend_from_slice(b"\n");
-    final_data.extend_from_slice(metadata_line2.as_bytes());
-    
-    // Write compressed file with minimal metadata
-    if let Err(e) = fs::write(&output_file, &final_data) {
+    // Save compressed data as u16 codes (2 bytes per code)
+    if let Err(e) = fs::write(&output_file, &compressed_text) {
         print_error("Failed to write compressed file", &e);
         return;
     }
-    
-    // Calculate actual compression (including minimal metadata)
-    let compressed_size = final_data.len();
-    let compression_ratio = (1.0 - compressed_size as f64 / original_size as f64) * 100.0;
-    
-    println!();
-    println!("{}", "✅ Compression Complete!".green().bold());
-    print_info("Original size", format!("{:.2} MB", original_size as f64 / (1024.0 * 1024.0)));
-    print_info("Compressed size", format!("{:.2} MB", compressed_size as f64 / (1024.0 * 1024.0)));
-    print_info("Compression achieved", format!("{:.1}%", compression_ratio));
     print_info("Compressed file", &output_file);
-    print_info("File format", "Raw binary with minimal metadata");
-    
-    if compression_ratio >= config.dictionary.ultra_compressed.compression_ratio {
-        println!("{}", format!("🎉 {:.1}%+ compression achieved!", config.dictionary.ultra_compressed.compression_ratio).green().bold());
-    } else {
-        println!("{}", "⚠️ Target compression not reached. Dictionary may need more combinations.".yellow().bold());
-    }
-    
-    // Show compression details
-    println!();
-    println!("{}", "📋 Compression Details:".yellow().bold());
-    print_info("Chunks processed", compressed_bytes.len());
-    print_info("Dictionary lookups", compressed_bytes.len());
-    print_info("Chunk size", format!("{} characters", chunk_size));
-    print_info("Compression ratio", format!("{}:1 ({} chars → 1 byte)", config.dictionary.ultra_compressed.length, config.dictionary.ultra_compressed.length));
-    print_info("Compression method", format!("Dictionary-based with {}-character chunks", config.dictionary.ultra_compressed.length));
-    print_info("Metadata overhead", format!("{} bytes (minimal)", final_data.len() - compressed_bytes.len()));
-    
-    // Show theoretical vs actual compression
-    let theoretical_compressed_size = original_size / config.dictionary.ultra_compressed.length as usize; // 66.7% compression
-    let theoretical_ratio = (1.0 - theoretical_compressed_size as f64 / original_size as f64) * 100.0;
-    print_info("Theoretical compression", format!("{:.1}%", theoretical_ratio));
-    print_info("Actual vs theoretical", format!("{:.1}% vs {:.1}%", compression_ratio, theoretical_ratio));
-    
-    println!();
-    println!("{}", "💡 File Structure:".cyan().bold());
-    println!("• Compressed binary data");
-    println!("• Line 1: File extension ({})", file_extension);
-    println!("• Line 2: Original size ({} bytes)", original_size);
-    println!("• Total overhead: {} bytes", final_data.len() - compressed_bytes.len());
+    print_info("Compressed size", format!("{:.2} KB", compressed_text.len() as f64 / 1024.0));
+    let ratio = compressed_text.len() as f64 / original_size as f64;
+    print_info("Compression ratio", format!("{:.2}x", ratio));
+    println!("{}", "✅ Compression complete!".green().bold());
 }
 
-/// Decompresses a compressed file with minimal metadata
 pub async fn decompress_file_cli() {
-    let config = get_config();
-    println!("{}", "🔓 File Decompression (Raw Binary with Minimal Metadata)".blue().bold());
+    println!("{}", "🔓 File Decompression (10-bit Binary Dictionary)".blue().bold());
     println!();
-    
-    let input_file = match Input::<String>::new()
-        .with_prompt("Enter compressed file path (.txt)")
+    let compressed_file = match Input::<String>::new()
+        .with_prompt("Enter compressed file path (.b10t3)")
         .interact_text() {
             Ok(s) => s,
             Err(e) => {
-                print_error("Failed to read input", &e);
+                print_error("Failed to read input file", &e);
                 return;
             }
     };
-    
-    let dictionary_file = match Input::<String>::new()
-        .with_prompt("Enter ASCII dictionary file path (ascii_combinations.json)")
-        .default("ascii_combinations.json".to_string())
-        .interact_text() {
-            Ok(s) => s,
-            Err(_) => "ascii_combinations.json".to_string(),
-    };
-    
-    println!();
-    println!("{}", "📊 Decompression Parameters:".yellow().bold());
-    print_info("Input file", &input_file);
-    print_info("Dictionary file", &dictionary_file);
-    print_info("Format", "Raw binary with minimal metadata");
-    
-    // Read the compressed file
-    let compressed_content = match fs::read(&input_file) {
+    let output_file = format!("{}_decompressed", compressed_file.trim_end_matches(".b10t3"));
+    let compressed_text = match fs::read_to_string(&compressed_file) {
         Ok(content) => content,
         Err(e) => {
             print_error("Failed to read compressed file", &e);
             return;
         }
     };
-    
-    let compressed_size = compressed_content.len();
-    print_info("Compressed file size", format!("{:.2} MB", compressed_size as f64 / (1024.0 * 1024.0)));
-    
-    // Extract metadata from last 2 lines
-    let content_str = String::from_utf8_lossy(&compressed_content);
-    let lines: Vec<&str> = content_str.lines().collect();
-    
-    if lines.len() < 3 {
-        print_error("Invalid compressed file format", &"File must have at least 3 lines (data + 2 metadata lines)");
-        return;
-    }
-    
-    let file_extension = lines[lines.len() - 2];
-    let size_info = lines[lines.len() - 1];
-    
-    // Parse size info
-    let original_size = size_info.parse::<usize>().unwrap_or(0);
-    
-    // Generate output filename: remove .txt extension and add original extension
-    let base_name = input_file.strip_suffix(".txt").unwrap_or(&input_file);
-    let output_file = if file_extension == "unknown" {
-        format!("{}_decompressed", base_name)
-    } else {
-        format!("{}.{}", base_name, file_extension)
-    };
-    
-    println!();
-    println!("{}", "📋 File Metadata:".yellow().bold());
-    print_info("File extension", file_extension);
-    print_info("Original size", format!("{} bytes", original_size));
-    print_info("Output file", &output_file);
-    
-    // Read the dictionary
-    let dictionary_content = match fs::read_to_string(&dictionary_file) {
-        Ok(content) => content,
+    let decompressed = match decompress_file_with_10to3_dict(&compressed_text, "binary_dictionary_10to3.json") {
+        Ok(bytes) => bytes,
         Err(e) => {
-            print_error("Failed to read dictionary file", &e);
+            print_error("Decompression failed", &e);
             return;
         }
     };
-    
-    let dictionary_data: Value = match serde_json::from_str(&dictionary_content) {
-        Ok(data) => data,
-        Err(e) => {
-            print_error("Failed to parse dictionary JSON", &e);
-            return;
-        }
-    };
-    
-    // Extract dictionary combinations
-    let combinations = match dictionary_data["combinations"].as_object() {
-        Some(obj) => obj,
-        None => {
-            print_error("Invalid dictionary format", &"No combinations object found");
-            return;
-        }
-    };
-    
-    println!();
-    println!("{}", "🔤 Dictionary Loaded:".yellow().bold());
-    print_info("Dictionary size", combinations.len());
-    print_info("Combination length", dictionary_data["metadata"]["length"].as_u64().unwrap_or(0));
-    
-    // Extract compressed data (everything except last 2 lines)
-    let compressed_data_lines = &lines[..lines.len() - 2];
-    let compressed_data_str = compressed_data_lines.join("\n");
-    let compressed_bytes: Vec<u8> = compressed_data_str.bytes().collect();
-    
-    println!("First 200 compressed bytes:");
-    for (i, &byte) in compressed_bytes.iter().take(200).enumerate() {
-        if i % 20 == 0 && i > 0 { println!(); }
-        print!("{:3} ", byte);
-    }
-    println!("\n");
-    
-    // Create progress bar
-    let progress_bar = ProgressBar::new(compressed_bytes.len() as u64);
-    progress_bar.set_style(
-        ProgressStyle::default_bar()
-            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta}) {msg}")
-            .unwrap()
-            .progress_chars("#>-"),
-    );
-    
-    // STEP 1: Dictionary decompression
-    println!("{}", "STEP 1: Dictionary decompression...".cyan().bold());
-    let chunk_size = config.dictionary.ultra_compressed.length;
-    let mut binary_string = String::new();
-    let mut processed_bytes = 0;
-    
-    for &compressed_byte in &compressed_bytes {
-        // Look up this byte in the dictionary (reverse lookup)
-        let mut found_chunk = None;
-        for (key, value) in combinations {
-            if let Some(char_value) = value.as_str() {
-                if char_value.chars().next().map(|c| c as u8) == Some(compressed_byte) {
-                    found_chunk = Some(key.clone());
-                    break;
-                }
-            }
-        }
-        
-        if let Some(chunk_str) = found_chunk {
-            binary_string.push_str(&chunk_str);
-        } else {
-            // Fallback: convert byte to binary 
-            binary_string.push_str(&format!("{:08b}", compressed_byte));
-        }
-        
-        processed_bytes += 1;
-        progress_bar.set_position(processed_bytes as u64);
-        progress_bar.set_message(format!("Decompressing... {} chunks", processed_bytes));
-    }
-    
-    // Save debug file and show first 200 values
-    if config.debug.save_debug_files {
-        fs::write("debug_reconstructed_binary_string.txt", &binary_string).expect("Failed to write debug_reconstructed_binary_string.txt");
-    }
-    
-    println!("First 200 characters of reconstructed binary string:");
-    for (i, ch) in binary_string.chars().take(200).enumerate() {
-        if i % 80 == 0 && i > 0 { println!(); }
-        print!("{}", ch);
-    }
-    println!("\n");
-    
-    progress_bar.finish_with_message("Dictionary decompression complete!".green().to_string());
-    
-    // STEP 2: Convert binary string back to ASCII bytes
-    println!("{}", "STEP 2: Converting binary string to ASCII bytes...".cyan().bold());
-    
-    let mut ascii_bytes = Vec::new();
-    for chunk in binary_string.as_bytes().chunks(8) {
-        if chunk.len() == 8 {
-            let mut byte = 0u8;
-            for (i, &bit) in chunk.iter().enumerate() {
-                if bit == b'1' {
-                    byte |= 1 << (7 - i);
-                }
-            }
-            ascii_bytes.push(byte);
-        }
-    }
-    
-    // Save debug file and show first 200 values
-    if config.debug.save_debug_files {
-        fs::write("debug_reconstructed_ascii.bin", &ascii_bytes).expect("Failed to write debug_reconstructed_ascii.bin");
-    }
-    
-    println!("First 200 reconstructed ASCII bytes:");
-    for (i, &byte) in ascii_bytes.iter().take(200).enumerate() {
-        if i % 20 == 0 && i > 0 { println!(); }
-        print!("{:3} ", byte);
-    }
-    println!("\n");
-    
-    // STEP 3: Reverse ASCII conversion to get original bytes
-    println!("{}", "STEP 3: Reversing ASCII conversion...".cyan().bold());
-    
-    let mut original_bytes = ascii_bytes;
-    for byte in &mut original_bytes {
-        // Reverse the ASCII conversion mapping
-        *byte = reverse_ascii_conversion(*byte);
-    }
-    
-    println!("First 200 final original bytes:");
-    for (i, &byte) in original_bytes.iter().take(200).enumerate() {
-        if i % 20 == 0 && i > 0 { println!(); }
-        print!("{:3} ", byte);
-    }
-    println!("\n");
-    
-    // Write the final decompressed file
-    if let Err(e) = fs::write(&output_file, &original_bytes) {
+    if let Err(e) = fs::write(&output_file, &decompressed) {
         print_error("Failed to write decompressed file", &e);
         return;
     }
-    
-    // Calculate decompression metrics
-    let decompressed_size = original_bytes.len();
-    let expansion_ratio = (decompressed_size as f64 / compressed_bytes.len() as f64) as f64;
-    
-    println!();
-    println!("{}", "✅ Decompression Complete!".green().bold());
-    print_info("Compressed size", format!("{:.2} MB", compressed_bytes.len() as f64 / (1024.0 * 1024.0)));
-    print_info("Decompressed size", format!("{:.2} MB", decompressed_size as f64 / (1024.0 * 1024.0)));
-    print_info("Expansion ratio", format!("{:.1}x", expansion_ratio));
     print_info("Decompressed file", &output_file);
-    
-    // Show decompression details
-    println!();
-    println!("{}", "📋 Decompression Details:".yellow().bold());
-    print_info("Chunks processed", compressed_bytes.len());
-    print_info("Dictionary lookups", compressed_bytes.len());
-    print_info("Chunk size", format!("{} characters", chunk_size));
-    print_info("Decompression method", format!("Dictionary-based with {}-character chunks", config.dictionary.ultra_compressed.length));
-    
-    // Verify file integrity
-    let integrity_check = if decompressed_size == original_size {
-        "✅ PASSED".green().bold()
-    } else {
-        "❌ FAILED".red().bold()
-    };
-    print_info("File integrity check", integrity_check);
-    print_info("Expected size", format!("{} bytes", original_size));
-    print_info("Actual size", format!("{} bytes", decompressed_size));
-    
-    println!();
-    println!("{}", "💡 Validation Summary:".cyan().bold());
-    println!("• Original → ASCII → Binary → Compressed → Binary → ASCII → Original");
-    println!("• All conversion steps have been validated with first 200 values");
-    println!("• Debug files saved for detailed analysis");
-    if decompressed_size == original_size {
-        println!("• ✅ Perfect 1:1 reconstruction achieved!");
-    } else {
-        println!("• ❌ Size mismatch detected - check conversion steps");
-    }
+    print_info("Decompressed size", format!("{:.2} KB", decompressed.len() as f64 / 1024.0));
+    println!("{}", "✅ Decompression complete!".green().bold());
 }
 
 /// Displays the CLI menu and handles command routing
 pub async fn main_menu() {
-    loop {
-        println!("\n{}", "🚀 Welcome to StarkSqueeze CLI!".bold().cyan());
-        println!("{}", "Please choose an option:".bold());
-
-        println!("1. Upload Data");
-        println!("2. Retrieve Data");
-        println!("3. Get All Data IDs");
-        println!("4. Generate ALL ASCII combinations dictionary (Ultra-compressed JSON - 3:1 compression for fast testing)");
-        println!("   - Generates ALL possible 3-character combinations automatically");
-        println!("   - Key-value dictionary format for maximum compression");
-        println!("   - No user input required - optimized for 3:1 compression");
-        println!("   - Shows time estimates and storage requirements upfront");
-        println!("5. Compress file (improved: auto naming, validation output, metadata in file)");
-        println!("6. Decompress file (improved: auto naming, validation output, perfect 1:1 reverse)");
-        println!("7. Exit");
-
-        let mut input = String::new();
-        print!("Enter your choice (1-7): ");
-        std::io::stdout().flush().unwrap();
-        
-        std::io::stdin().read_line(&mut input).unwrap();
-        
-        match input.trim() {
-            "1" => upload_data_cli(None).await,
-            "2" => reconstruct_from_mapping_cli().await,
-            "3" => {
-                // Placeholder for Get All Data IDs
-                println!("{}", "Feature not implemented yet.".yellow().bold());
-                println!("Press Enter to continue...");
-                let _ = std::io::stdin().read_line(&mut String::new());
-            },
-            "4" => generate_ultra_compressed_ascii_combinations_cli().await,
-            "5" => compress_file_cli().await,
-            "6" => decompress_file_cli().await,
-            "7" => {
-                println!("{}", "👋 Goodbye!".bold().green());
-                break;
-            }
-            _ => {
-                println!("Invalid choice. Please enter a number between 1 and 7.");
-            }
+    println!("1. Upload data");
+    println!("2. Reconstruct from mapping");
+    println!("3. Analyze mapping");
+    println!("4. Compress file");
+    println!("5. Decompress file");
+    println!("6. Generate 10:3 Binary Dictionary (1024 10-bit patterns, base64 codes)");
+    println!("7. Exit");
+    let mut input = String::new();
+    print!("Enter your choice (1-7): ");
+    std::io::stdout().flush().unwrap();
+    std::io::stdin().read_line(&mut input).unwrap();
+    match input.trim() {
+        "1" => upload_data_cli(None).await,
+        "2" => reconstruct_from_mapping_cli().await,
+        "3" => analyze_mapping_only_cli().await,
+        "4" => compress_file_cli().await,
+        "5" => decompress_file_cli().await,
+        "6" => generate_binary_dictionary_10to3_cli().await,
+        "7" => {
+            println!("{}", "👋 Goodbye!".bold().green());
+            return;
+        }
+        _ => {
+            println!("Invalid choice. Please enter a number between 1 and 7.");
         }
     }
 }

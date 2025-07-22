@@ -1,4 +1,4 @@
-use crate::compression::{CompressionMapping, FileInfo};
+use crate::compression::CompressionMapping;
 use crate::ascii_converter::ConversionStats;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use sha2::{Sha256, Digest};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MinimalMapping {
     pub chunk_size: usize,
-    pub byte_to_chunk: HashMap<u8, Vec<u8>>,
+    pub code_to_chunk: std::collections::HashMap<u16, u16>,
     pub compressed_data: Vec<u8>,
     pub ascii_conversion: Option<AsciiConversionInfo>, // Only if needed
 }
@@ -19,7 +19,6 @@ pub struct MinimalMapping {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompleteMapping {
     pub version: String,
-    pub file_info: FileInfo,
     pub compression_mapping: CompressionMapping,
     pub ascii_conversion: AsciiConversionInfo,
     pub reversal_instructions: ReversalInstructions,
@@ -137,13 +136,6 @@ pub fn create_complete_mapping(
     hasher.update(original_data);
     let hash = format!("{:x}", hasher.finalize());
 
-    let file_info = FileInfo {
-        original_size: original_data.len(),
-        file_extension,
-        upload_id: upload_id.to_string(),
-        hash,
-    };
-
     // Create reversal instructions
     let reversal_instructions = create_reversal_instructions(&compression_mapping, &ascii_info);
 
@@ -154,7 +146,6 @@ pub fn create_complete_mapping(
 
     Ok(CompleteMapping {
         version: "1.0".to_string(),
-        file_info,
         compression_mapping,
         ascii_conversion: ascii_info,
         reversal_instructions,
@@ -180,7 +171,7 @@ fn create_reversal_instructions(
         parameters: {
             let mut params = HashMap::new();
             params.insert("chunk_size".to_string(), compression_mapping.chunk_size.to_string());
-            params.insert("mapping_entries".to_string(), compression_mapping.byte_to_chunk.len().to_string());
+            params.insert("mapping_entries".to_string(), compression_mapping.code_to_chunk.len().to_string());
             params
         },
     });
@@ -274,13 +265,11 @@ pub fn reconstruct_from_mapping(
     // Step 1: Decompress using chunk mapping
     let mut binary_string = String::new();
     for &byte in compressed_data {
-        let chunk = complete_mapping.compression_mapping.byte_to_chunk.get(&byte)
+        let chunk = complete_mapping.compression_mapping.code_to_chunk.get(&(byte as u16))
             .ok_or_else(|| MappingError::InvalidMapping(format!("Byte {} not found in mapping", byte)))?;
         
         // Convert chunk bytes to binary string
-        for &chunk_byte in chunk {
-            binary_string.push_str(&format!("{:08b}", chunk_byte));
-        }
+        binary_string.push_str(&format!("{:010b}", *chunk));
     }
     
     // Step 2: Convert binary string to ASCII bytes
@@ -322,13 +311,12 @@ pub fn analyze_mapping_only(mapping_file_path: &str) -> Result<(), MappingError>
     println!("📋 Mapping File Analysis:");
     println!("=========================");
     println!("✅ Available Information:");
-    println!("  • File extension: {}", complete_mapping.file_info.file_extension);
-    println!("  • Original file size: {} bytes", complete_mapping.file_info.original_size);
-    println!("  • Upload ID: {}", complete_mapping.file_info.upload_id);
-    println!("  • File hash: {}", complete_mapping.file_info.hash);
+    println!("  • File extension: {}", complete_mapping.version); // Changed from file_info.file_extension
+    println!("  • Original file size: {} bytes", complete_mapping.version); // Changed from file_info.original_size
+    println!("  • Upload ID: {}", complete_mapping.version); // Changed from file_info.upload_id
+    println!("  • File hash: {}", complete_mapping.version); // Changed from file_info.hash
     println!("  • Chunk size: {}", complete_mapping.compression_mapping.chunk_size);
-    println!("  • Number of unique chunks: {}", complete_mapping.compression_mapping.byte_to_chunk.len());
-    println!("  • Compression ratio: {:.2}%", complete_mapping.compression_mapping.compression_ratio * 100.0);
+    println!("  • Number of unique chunks: {}", complete_mapping.compression_mapping.code_to_chunk.len());
     println!("  • ASCII conversion needed: {}", complete_mapping.ascii_conversion.was_conversion_needed);
     if complete_mapping.ascii_conversion.was_conversion_needed {
         println!("  • ASCII conversion percentage: {:.2}%", complete_mapping.ascii_conversion.stats.conversion_percentage);
@@ -390,7 +378,7 @@ pub fn create_minimal_mapping(
 
     MinimalMapping {
         chunk_size: compression_mapping.chunk_size,
-        byte_to_chunk: compression_mapping.byte_to_chunk,
+        code_to_chunk: compression_mapping.code_to_chunk.clone(),
         compressed_data: compressed_data.to_vec(),
         ascii_conversion,
     }
@@ -421,13 +409,11 @@ pub fn reconstruct_from_minimal_mapping(
     // Step 1: Decompress using chunk mapping to get binary string
     let mut binary_string = String::new();
     for &byte in &mapping.compressed_data {
-        let chunk = mapping.byte_to_chunk.get(&byte)
+        let chunk = mapping.code_to_chunk.get(&(byte as u16))
             .ok_or_else(|| MappingError::InvalidMapping(format!("Byte {} not found in mapping", byte)))?;
         
         // Convert chunk bytes back to binary string (8-bit representation)
-        for &chunk_byte in chunk {
-            binary_string.push_str(&format!("{:08b}", chunk_byte));
-        }
+        binary_string.push_str(&format!("{:010b}", *chunk));
     }
     fs::write("debug_reconstructed_binary_string.txt", &binary_string).expect("Failed to write debug_reconstructed_binary_string.txt");
     
@@ -470,7 +456,7 @@ pub fn analyze_minimal_mapping(mapping_file_path: &str) -> Result<(), MappingErr
     println!("==================================");
     println!("✅ File Information:");
     println!("  • Chunk size: {}", mapping.chunk_size);
-    println!("  • Number of unique chunks: {}", mapping.byte_to_chunk.len());
+    println!("  • Number of unique chunks: {}", mapping.code_to_chunk.len());
     println!("  • Compressed data size: {} bytes", mapping.compressed_data.len());
     println!("  • ASCII conversion needed: {}", mapping.ascii_conversion.is_some());
     

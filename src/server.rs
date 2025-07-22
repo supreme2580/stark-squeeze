@@ -245,7 +245,8 @@ async fn process_file_compression(
     
     // Step 5: Generate hash for file identification
     let mut hasher = Sha256::new();
-    hasher.update(&encoded_data);
+    let encoded_data_bytes: Vec<u8> = encoded_data.iter().flat_map(|x| x.to_be_bytes()).collect();
+    hasher.update(&encoded_data_bytes);
     let hash = hasher.finalize();
     let short_hash = hex::encode(&hash[..8]);
     
@@ -253,7 +254,7 @@ async fn process_file_compression(
     let minimal_mapping = create_minimal_mapping(
         mapping,
         &ascii_stats,
-        &encoded_data,
+        &encoded_data_bytes,
     );
     
     // Step 7: Save mapping file
