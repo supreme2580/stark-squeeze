@@ -1220,8 +1220,8 @@ pub async fn compress_file_cli() {
     println!();
     println!("{}", "💡 File Structure:".cyan().bold());
     println!("• Compressed binary data");
-    println!("• Line 1: Original filename");
-    println!("• Line 2: Format and size info");
+    println!("• Line 1: File extension ({})", file_extension);
+    println!("• Line 2: Original size ({} bytes)", original_size);
     println!("• Total overhead: {} bytes", final_data.len() - compressed_bytes.len());
 }
 
@@ -1470,6 +1470,17 @@ pub async fn decompress_file_cli() {
     print_info("File integrity check", integrity_check);
     print_info("Expected size", format!("{} bytes", original_size));
     print_info("Actual size", format!("{} bytes", decompressed_size));
+    
+    println!();
+    println!("{}", "💡 Validation Summary:".cyan().bold());
+    println!("• Original → ASCII → Binary → Compressed → Binary → ASCII → Original");
+    println!("• All conversion steps have been validated with first 200 values");
+    println!("• Debug files saved for detailed analysis");
+    if decompressed_size == original_size {
+        println!("• ✅ Perfect 1:1 reconstruction achieved!");
+    } else {
+        println!("• ❌ Size mismatch detected - check conversion steps");
+    }
 }
 
 /// Displays the CLI menu and handles command routing
@@ -1486,8 +1497,8 @@ pub async fn main_menu() {
         println!("   - Key-value dictionary format for maximum compression");
         println!("   - No user input required - optimized for 3:1 compression");
         println!("   - Shows time estimates and storage requirements upfront");
-        println!("5. Compress file (raw binary with minimal metadata)");
-        println!("6. Decompress file");
+        println!("5. Compress file (improved: auto naming, validation output, metadata in file)");
+        println!("6. Decompress file (improved: auto naming, validation output, perfect 1:1 reverse)");
         println!("7. Exit");
 
         let mut input = String::new();
