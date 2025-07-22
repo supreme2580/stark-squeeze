@@ -424,9 +424,9 @@ pub fn reconstruct_from_minimal_mapping(
         let chunk = mapping.byte_to_chunk.get(&byte)
             .ok_or_else(|| MappingError::InvalidMapping(format!("Byte {} not found in mapping", byte)))?;
         
-        // Convert chunk bytes back to binary string
+        // Convert chunk bytes back to binary string (8-bit representation)
         for &chunk_byte in chunk {
-            binary_string.push(chunk_byte as char);
+            binary_string.push_str(&format!("{:08b}", chunk_byte));
         }
     }
     fs::write("debug_reconstructed_binary_string.txt", &binary_string).expect("Failed to write debug_reconstructed_binary_string.txt");
