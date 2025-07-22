@@ -9,8 +9,7 @@ pub mod config;
 
 // Re-export commonly used items
 pub use ascii_converter::convert_to_printable_ascii;
-pub use cli::{main_menu, upload_data_cli, generate_ultra_compressed_ascii_combinations_cli, compress_file_cli, decompress_file_cli};
-pub use compression::{compress_file_with_10to3_dict, decompress_file_with_10to3_dict};
+pub use cli::{main_menu, upload_data_cli, generate_ultra_compressed_ascii_combinations_cli};
 pub use mapping::{create_complete_mapping, save_mapping, CompleteMapping, MappingError};
 pub use starknet_client::upload_data;
 pub use utils::short_string_to_felt;
@@ -26,9 +25,9 @@ async fn main() {
     if args.len() > 1 && args[1] == "--generate" {
         generate_ultra_compressed_ascii_combinations_cli().await;
     } else if args.len() > 1 && args[1] == "--compress" {
-        compress_file_cli().await;
+        // compress_file_cli().await; // This line is removed as per the edit hint.
     } else if args.len() > 1 && args[1] == "--decompress" {
-        decompress_file_cli().await;
+        // decompress_file_cli().await; // This line is removed as per the edit hint.
     } else {
         main_menu().await;
     }

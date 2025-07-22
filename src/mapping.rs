@@ -11,7 +11,7 @@ use sha2::{Sha256, Digest};
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MinimalMapping {
     pub chunk_size: usize,
-    pub code_to_chunk: std::collections::HashMap<u16, u16>,
+    pub code_to_chunk: std::collections::HashMap<u16, Vec<u8>>,
     pub compressed_data: Vec<u8>,
     pub ascii_conversion: Option<AsciiConversionInfo>, // Only if needed
 }
@@ -269,7 +269,7 @@ pub fn reconstruct_from_mapping(
             .ok_or_else(|| MappingError::InvalidMapping(format!("Byte {} not found in mapping", byte)))?;
         
         // Convert chunk bytes to binary string
-        binary_string.push_str(&format!("{:010b}", *chunk));
+        binary_string.push_str(&vec_u8_to_bin_string(chunk));
     }
     
     // Step 2: Convert binary string to ASCII bytes
@@ -413,7 +413,7 @@ pub fn reconstruct_from_minimal_mapping(
             .ok_or_else(|| MappingError::InvalidMapping(format!("Byte {} not found in mapping", byte)))?;
         
         // Convert chunk bytes back to binary string (8-bit representation)
-        binary_string.push_str(&format!("{:010b}", *chunk));
+        binary_string.push_str(&vec_u8_to_bin_string(chunk));
     }
     fs::write("debug_reconstructed_binary_string.txt", &binary_string).expect("Failed to write debug_reconstructed_binary_string.txt");
     
@@ -483,4 +483,8 @@ pub fn analyze_minimal_mapping(mapping_file_path: &str) -> Result<(), MappingErr
     println!("  • The file will be automatically decompressed and restored");
     
     Ok(())
+}
+
+fn vec_u8_to_bin_string(chunk: &Vec<u8>) -> String {
+    chunk.iter().map(|b| format!("{:08b}", b)).collect::<Vec<_>>().join("")
 }

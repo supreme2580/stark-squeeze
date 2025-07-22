@@ -16,7 +16,6 @@ use crate::ipfs_client::pin_file_to_ipfs;
 use std::fs;
 use serde_json::{json, Value};
 use crate::config::get_config;
-use crate::compression::{compress_file_with_10to3_dict, decompress_file_with_10to3_dict};
 use std::collections::HashMap;
 
 /// Reverses ASCII conversion mapping to restore original bytes
@@ -147,25 +146,25 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
 
     // Compress the data
     let bytes = binary_string.as_bytes();
-    let result = match crate::compression::compress_file(&bytes) {
-        Ok(result) => result,
+    let packed_bytes = match crate::compression::compress_file(&bytes) {
+        Ok(packed) => packed,
         Err(e) => {
             print_error("Failed in compression step", &e);
             return;
         }
     };
-    let encoded_data = result.compressed_data;
-    let mapping = result.mapping;
+    // Save packed_bytes to file, use for hashing, IPFS, etc.
+    std::fs::write("debug_packed.bin", &packed_bytes).expect("Failed to write debug_packed.bin");
 
     // Calculate sizes and ratios
     let original_size = binary_string.len() as u64;
-    let compressed_size = encoded_data.len() as u64;
+    let compressed_size = packed_bytes.len() as u64;
     let compression_ratio = ((compressed_size as f64 / original_size as f64) * 100.0) as u64;
 
     // Generate hash from the compressed data
     let mut hasher = Sha256::new();
     // Convert encoded_data (Vec<u16>) to Vec<u8> for hashing and other uses
-    let encoded_data_bytes: Vec<u8> = encoded_data.iter().flat_map(|x| x.to_be_bytes()).collect();
+    let encoded_data_bytes: Vec<u8> = packed_bytes.iter().flat_map(|x| x.to_be_bytes()).collect();
     hasher.update(&encoded_data_bytes);
     let hash = hasher.finalize();
 
@@ -207,7 +206,7 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
         0 
     };
     
-    // Create minimal arrays for on-chain storage (avoiding large mappings)
+    // Remove the call to create_minimal_mapping and any code that tries to use or save a minimal mapping in upload_data_cli.
     let chunk_mappings = vec![FieldElement::from(0u32)]; // Placeholder
     let chunk_values = vec![0u8]; // Placeholder
     let byte_mappings = vec![0u8]; // Placeholder
@@ -238,7 +237,7 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
     // IPFS Pinning after upload completion
     println!("\n{}", "🔗 Starting IPFS pinning...".blue().bold());
     
-    match pin_file_to_ipfs(&encoded_data_bytes, &format!("{}.compressed", file_path)).await {
+    match pin_file_to_ipfs(&packed_bytes, &format!("{}.compressed", file_path)).await {
         Ok(ipfs_cid) => {
             println!("✅ Pinned to IPFS: {}", ipfs_cid.green().bold());
             println!("🌐 IPFS Gateway: https://gateway.pinata.cloud/ipfs/{}", ipfs_cid);
@@ -247,22 +246,6 @@ pub async fn upload_data_cli(file_path_arg: Option<std::path::PathBuf>) {
             println!("❌ IPFS Pin Failed: {}", e.to_string().red().bold());
             println!("💡 Check your PINATA_JWT token in .env file");
         }
-    }
-
-    // Create minimal mapping for file reconstruction
-    let minimal_mapping = create_minimal_mapping(
-        mapping,
-        &ascii_stats,
-        &encoded_data_bytes,
-    );
-
-    // Save the minimal mapping to a JSON file
-    let mapping_file = format!("{}.map", file_path);
-    if let Err(e) = save_minimal_mapping(&minimal_mapping, &mapping_file) {
-        print_error("Failed to save mapping file", &e);
-    } else {
-        println!("🗜️  Mapping file saved to: {}", mapping_file);
-        println!("   (self-contained, can reconstruct original file)");
     }
 
     // Display results
@@ -974,104 +957,107 @@ pub async fn generate_ultra_compressed_ascii_combinations_cli() {
     println!("- Ready for file compression using option 8");
 }
 
-pub async fn generate_binary_dictionary_10to3_cli() {
-    use base64::{engine::general_purpose, Engine as _};
-    println!("{}", "🔢 Generating 10:3 Binary Dictionary (1024 10-bit patterns, base64 codes)".blue().bold());
-    let charset = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut dict = std::collections::HashMap::new();
+/// Generates ASCII character combinations in ultra-compressed JSON format (3:1 compression for fast testing)
+pub async fn generate_10bit_dictionary_cli() {
+    use std::collections::HashMap;
+    use std::fs;
+    use serde_json::json;
+    println!("\u{1F522} Generating 10-bit Dictionary (0..1023)");
+    let mut dict = HashMap::new();
     for i in 0..1024u16 {
-        // 10 bits to 2 bytes, then encode to 3 base64 chars
-        let bytes = i.to_be_bytes();
-        let b64 = general_purpose::STANDARD.encode(&bytes);
-        // base64 encodes 2 bytes to 4 chars, but we only need 3 chars for 10 bits
-        let code = &b64[0..3];
-        dict.insert(format!("{:010b}", i), code.to_string());
+        dict.insert(i, format!("{:010b}", i));
     }
     let json = serde_json::to_string_pretty(&dict).unwrap();
-    let filename = "binary_dictionary_10to3.json";
-    if let Err(e) = std::fs::write(filename, json) {
-        print_error("Failed to write binary dictionary", &e);
+    let filename = "10bit_dictionary.json";
+    if let Err(e) = fs::write(filename, json) {
+        println!("Failed to write dictionary: {}", e);
         return;
     }
     println!("Dictionary saved to {} ({} entries)", filename, dict.len());
 }
 
-pub async fn compress_file_cli() {
-    println!("{}", "🗜️ File Compression (10-bit Binary Dictionary)".blue().bold());
-    println!();
-    let input_file = match Input::<String>::new()
-        .with_prompt("Enter input file path to compress")
-        .interact_text() {
-            Ok(s) => s,
-            Err(e) => {
-                print_error("Failed to read input file", &e);
-                return;
-            }
-    };
-    let output_file = format!("{}.b10t3", input_file);
-    let input_content = match fs::read(&input_file) {
-        Ok(content) => content,
-        Err(e) => {
-            print_error("Failed to read input file", &e);
-            return;
-        }
-    };
-    let original_size = input_content.len();
-    print_info("Original file size", format!("{:.2} KB", original_size as f64 / 1024.0));
-    // Compress
-    let compressed_text = match compress_file_with_10to3_dict(&input_content, "binary_dictionary_10to3.json") {
-        Ok(compressed) => compressed,
-        Err(e) => {
-            print_error("Compression failed", &e);
-            return;
-        }
-    };
-    // Save compressed data as u16 codes (2 bytes per code)
-    if let Err(e) = fs::write(&output_file, &compressed_text) {
-        print_error("Failed to write compressed file", &e);
-        return;
-    }
-    print_info("Compressed file", &output_file);
-    print_info("Compressed size", format!("{:.2} KB", compressed_text.len() as f64 / 1024.0));
-    let ratio = compressed_text.len() as f64 / original_size as f64;
-    print_info("Compression ratio", format!("{:.2}x", ratio));
-    println!("{}", "✅ Compression complete!".green().bold());
-}
-
+/// Decompresses a file using a minimal mapping
 pub async fn decompress_file_cli() {
-    println!("{}", "🔓 File Decompression (10-bit Binary Dictionary)".blue().bold());
-    println!();
-    let compressed_file = match Input::<String>::new()
-        .with_prompt("Enter compressed file path (.b10t3)")
-        .interact_text() {
-            Ok(s) => s,
-            Err(e) => {
-                print_error("Failed to read input file", &e);
-                return;
-            }
+    use std::fs;
+    use std::path::Path;
+    println!("\u{1F513} Decompress file");
+    let compressed_file = prompt_string("Enter compressed file path (.txt)").await;
+    let path = Path::new(&compressed_file);
+    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    // Remove trailing .txt from file_stem if present
+    let output_file = if file_stem.ends_with(".txt") {
+        &file_stem[..file_stem.len()-4]
+    } else {
+        file_stem
     };
-    let output_file = format!("{}_decompressed", compressed_file.trim_end_matches(".b10t3"));
-    let compressed_text = match fs::read_to_string(&compressed_file) {
-        Ok(content) => content,
+    println!("Output file will be: {}", output_file);
+    // Read compressed data
+    let compressed_data = match fs::read(&compressed_file) {
+        Ok(data) => data,
         Err(e) => {
             print_error("Failed to read compressed file", &e);
             return;
         }
     };
-    let decompressed = match decompress_file_with_10to3_dict(&compressed_text, "binary_dictionary_10to3.json") {
-        Ok(bytes) => bytes,
+    // Decompress
+    match crate::compression::decompress_file(&compressed_data) {
+        Ok(bytes) => {
+            if let Err(e) = fs::write(&output_file, &bytes) {
+                print_error("Failed to write output file", &e);
+                return;
+            }
+            println!("\u{2705} Decompression complete! Output: {}", output_file);
+        }
         Err(e) => {
             print_error("Decompression failed", &e);
+        }
+    }
+}
+
+/// Adds this helper:
+fn minimal_to_compression_mapping(min: &crate::mapping::MinimalMapping) -> crate::compression::CompressionMapping {
+    crate::compression::CompressionMapping {
+        chunk_size: min.chunk_size,
+        chunk_to_code: std::collections::HashMap::new(), // Not needed for decompression
+        code_to_chunk: min.code_to_chunk.clone(),
+        padding: 0, // You may want to store this in MinimalMapping if needed
+        original_size: 0, // You may want to store this in MinimalMapping if needed
+    }
+}
+
+/// Compresses a file using the bit-packed pipeline
+pub async fn compress_file_cli() {
+    use std::fs;
+    use std::path::Path;
+    println!("\u{1F4E6} Compress file");
+    let input_file = prompt_string("Enter input file path").await;
+    let path = Path::new(&input_file);
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    let compressed_file = format!("{}.{}.txt", stem, ext);
+    println!("Compressed file will be: {}", compressed_file);
+    // Read input data
+    let input_data = match fs::read(&input_file) {
+        Ok(data) => data,
+        Err(e) => {
+            print_error("Failed to read input file", &e);
             return;
         }
     };
-    if let Err(e) = fs::write(&output_file, &decompressed) {
-        print_error("Failed to write decompressed file", &e);
+    // Compress
+    let compressed_data = match crate::compression::compress_file(&input_data) {
+        Ok(c) => c,
+        Err(e) => {
+            print_error("Compression failed", &e);
+            return;
+        }
+    };
+    // Save compressed data
+    if let Err(e) = fs::write(&compressed_file, &compressed_data) {
+        print_error("Failed to write compressed file", &e);
         return;
     }
-    print_info("Decompressed file", &output_file);
-    print_info("Decompressed size", format!("{:.2} KB", decompressed.len() as f64 / 1024.0));
-    println!("{}", "✅ Decompression complete!".green().bold());
+    println!("\u{2705} Compression complete! Compressed: {}", compressed_file);
 }
 
 /// Displays the CLI menu and handles command routing
@@ -1079,9 +1065,9 @@ pub async fn main_menu() {
     println!("1. Upload data");
     println!("2. Reconstruct from mapping");
     println!("3. Analyze mapping");
-    println!("4. Compress file");
+    println!("4. Generate 10-bit Dictionary (0..1023)");
     println!("5. Decompress file");
-    println!("6. Generate 10:3 Binary Dictionary (1024 10-bit patterns, base64 codes)");
+    println!("6. Compress file");
     println!("7. Exit");
     let mut input = String::new();
     print!("Enter your choice (1-7): ");
@@ -1091,11 +1077,11 @@ pub async fn main_menu() {
         "1" => upload_data_cli(None).await,
         "2" => reconstruct_from_mapping_cli().await,
         "3" => analyze_mapping_only_cli().await,
-        "4" => compress_file_cli().await,
+        "4" => generate_10bit_dictionary_cli().await,
         "5" => decompress_file_cli().await,
-        "6" => generate_binary_dictionary_10to3_cli().await,
+        "6" => compress_file_cli().await,
         "7" => {
-            println!("{}", "👋 Goodbye!".bold().green());
+            println!("{}", "\u{1F44B} Goodbye!".bold().green());
             return;
         }
         _ => {

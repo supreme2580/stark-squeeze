@@ -195,7 +195,6 @@ async fn compress_file_endpoint(
         Ok(result) => {
             let mut state_guard = state.lock().await;
             state_guard.total_files_processed += 1;
-            
             Ok(Json(result))
         }
         Err(e) => {
@@ -234,10 +233,8 @@ async fn process_file_compression(
     
     // Step 3: Compress the data
     let bytes = binary_string.as_bytes();
-    let result = compress_file(bytes)
+    let encoded_data = compress_file(bytes)
         .map_err(|e| anyhow::anyhow!("Compression failed: {}", e))?;
-    let encoded_data = result.compressed_data;
-    let mapping = result.mapping;
     
     // Step 4: Calculate compression metrics
     let compressed_size = encoded_data.len();
@@ -251,16 +248,12 @@ async fn process_file_compression(
     let short_hash = hex::encode(&hash[..8]);
     
     // Step 6: Create minimal mapping for file reconstruction
-    let minimal_mapping = create_minimal_mapping(
-        mapping,
-        &ascii_stats,
-        &encoded_data_bytes,
-    );
+    // Remove the call to create_minimal_mapping and any code that tries to use or save a minimal mapping, since there is no per-file mapping anymore.
     
     // Step 7: Save mapping file
     let mapping_file_name = format!("{}.map", short_hash);
-    save_minimal_mapping(&minimal_mapping, &mapping_file_name)
-        .map_err(|e| anyhow::anyhow!("Failed to save mapping: {}", e))?;
+    // save_minimal_mapping(&minimal_mapping, &mapping_file_name)
+    //     .map_err(|e| anyhow::anyhow!("Failed to save mapping: {}", e))?;
     
     // Step 8: Upload to Starknet (optional - you can disable this for testing)
     let file_url = if std::env::var("ENABLE_STARKNET_UPLOAD").unwrap_or_default() == "true" {
@@ -285,7 +278,7 @@ async fn process_file_compression(
         original_size: Some(original_size),
         compressed_size: Some(compressed_size),
         error: None,
-        mapping_file: Some(mapping_file_name),
+        mapping_file: None,
     })
 }
 
