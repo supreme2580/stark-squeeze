@@ -994,15 +994,8 @@ pub async fn compress_file_cli() {
             Err(_) => "ascii_combinations.json".to_string(),
     };
     
-    let output_file = match Input::<String>::new()
-        .with_prompt("Enter output compressed file path")
-        .interact_text() {
-            Ok(s) => s,
-            Err(e) => {
-                print_error("Failed to read input", &e);
-                return;
-            }
-    };
+    // Automatically generate output filename (same name with .txt extension)
+    let output_file = format!("{}.txt", input_file);
     
     println!();
     println!("{}", "📊 Compression Parameters:".yellow().bold());
@@ -1023,6 +1016,13 @@ pub async fn compress_file_cli() {
     
     let original_size = input_content.len();
     print_info("Original file size", format!("{:.2} MB", original_size as f64 / (1024.0 * 1024.0)));
+    
+    // Get file extension
+    let file_extension = std::path::Path::new(&input_file)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("unknown")
+        .to_string();
     
     // Read the dictionary
     let dictionary_content = match fs::read_to_string(&dictionary_file) {
@@ -1064,7 +1064,8 @@ pub async fn compress_file_cli() {
             .progress_chars("#>-"),
     );
     
-    // Convert input file to ASCII
+    // STEP 1: Convert input file to ASCII
+    println!("\n{}", "STEP 1: Converting to printable ASCII...".cyan().bold());
     let (ascii_content, _ascii_stats) = match convert_to_printable_ascii(&input_content) {
         Ok(result) => result,
         Err(e) => {
@@ -1073,42 +1074,82 @@ pub async fn compress_file_cli() {
         }
     };
     
+    // Save debug file and show first 200 values
+    if config.debug.save_debug_files {
+        fs::write("debug_original.bin", &input_content).expect("Failed to write debug_original.bin");
+        fs::write("debug_ascii.bin", &ascii_content).expect("Failed to write debug_ascii.bin");
+    }
+    
+    println!("First 200 original bytes:");
+    for (i, &byte) in input_content.iter().take(200).enumerate() {
+        if i % 20 == 0 && i > 0 { println!(); }
+        print!("{:3} ", byte);
+    }
+    println!("\n");
+    
+    println!("First 200 ASCII converted bytes:");
+    for (i, &byte) in ascii_content.iter().take(200).enumerate() {
+        if i % 20 == 0 && i > 0 { println!(); }
+        print!("{:3} ", byte);
+    }
+    println!("\n");
+    
     progress_bar.set_message("Converting to ASCII...".to_string());
     progress_bar.inc(original_size as u64 / 4);
     
-    // Group ASCII content into configured chunks for compression
+    // STEP 2: Convert ASCII to binary string
+    println!("{}", "STEP 2: Converting ASCII to binary string...".cyan().bold());
+    let binary_string: String = ascii_content.iter()
+        .map(|&byte| format!("{:08b}", byte))
+        .collect();
+    
+    // Save debug file and show first 200 values
+    if config.debug.save_debug_files {
+        fs::write("debug_binary_string.txt", &binary_string).expect("Failed to write debug_binary_string.txt");
+    }
+    
+    println!("First 200 characters of binary string:");
+    for (i, ch) in binary_string.chars().take(200).enumerate() {
+        if i % 80 == 0 && i > 0 { println!(); }
+        print!("{}", ch);
+    }
+    println!("\n");
+    
+    progress_bar.set_message("Converting to binary string...".to_string());
+    progress_bar.inc(original_size as u64 / 4);
+    
+    // STEP 3: Dictionary compression  
+    println!("{}", "STEP 3: Dictionary compression...".cyan().bold());
     let chunk_size = config.dictionary.ultra_compressed.length; // 3 characters = 1 byte (66.7% compression for fast testing)
     let mut compressed_bytes = Vec::new();
     let mut processed_bytes = 0;
     
-    for chunk_start in (0..ascii_content.len()).step_by(chunk_size) {
-        let chunk_end = std::cmp::min(chunk_start + chunk_size, ascii_content.len());
-        let mut chunk = vec![0u8; chunk_size];
+    for chunk_start in (0..binary_string.len()).step_by(chunk_size) {
+        let chunk_end = std::cmp::min(chunk_start + chunk_size, binary_string.len());
+        let chunk_str = &binary_string[chunk_start..chunk_end];
         
-        // Fill the chunk with ASCII bytes
-        for (i, &byte) in ascii_content[chunk_start..chunk_end].iter().enumerate() {
-            chunk[i] = byte;
+        // Pad chunk to exact size if needed
+        let mut padded_chunk = chunk_str.to_string();
+        while padded_chunk.len() < chunk_size {
+            padded_chunk.push('0'); // Pad with zeros
         }
         
-        // Convert chunk to string for dictionary lookup
-        let chunk_string: String = chunk.iter().map(|&b| b as char).collect();
-        
         // Look up this combination in the dictionary
-        if let Some(value) = combinations.get(&chunk_string) {
+        if let Some(value) = combinations.get(&padded_chunk) {
             if let Some(char_value) = value.as_str() {
                 if let Some(byte_value) = char_value.chars().next() {
                     compressed_bytes.push(byte_value as u8);
                 } else {
-                    // Fallback: use first byte of chunk
-                    compressed_bytes.push(chunk[0]);
+                    // Fallback: use first byte of chunk as ASCII
+                    compressed_bytes.push(padded_chunk.chars().next().unwrap_or('0') as u8);
                 }
             } else {
-                // Fallback: use first byte of chunk
-                compressed_bytes.push(chunk[0]);
+                // Fallback: use first byte of chunk as ASCII
+                compressed_bytes.push(padded_chunk.chars().next().unwrap_or('0') as u8);
             }
         } else {
-            // If not found in dictionary, use first byte of chunk
-            compressed_bytes.push(chunk[0]);
+            // If not found in dictionary, use first character of chunk as ASCII
+            compressed_bytes.push(padded_chunk.chars().next().unwrap_or('0') as u8);
         }
         
         processed_bytes += chunk_end - chunk_start;
@@ -1116,11 +1157,18 @@ pub async fn compress_file_cli() {
         progress_bar.set_message(format!("Compressing... {} chunks", compressed_bytes.len()));
     }
     
+    println!("First 200 compressed bytes:");
+    for (i, &byte) in compressed_bytes.iter().take(200).enumerate() {
+        if i % 20 == 0 && i > 0 { println!(); }
+        print!("{:3} ", byte);
+    }
+    println!("\n");
+    
     progress_bar.finish_with_message("Compression complete!".green().to_string());
     
     // Create minimal metadata (last 2 lines of file)
-    let metadata_line1 = format!("{}", input_file);
-    let metadata_line2 = format!("0, size: {}", original_size);
+    let metadata_line1 = format!("{}", file_extension);
+    let metadata_line2 = format!("{}", original_size);
     
     // Combine compressed data with minimal metadata
     let mut final_data = compressed_bytes.clone();
