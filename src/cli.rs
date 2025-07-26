@@ -10,55 +10,14 @@ use sha2::{Sha256, Digest};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use crate::ascii_converter::convert_to_printable_ascii;
-use crate::mapping::{create_minimal_mapping, save_minimal_mapping, reconstruct_from_minimal_mapping, analyze_minimal_mapping};
+use crate::mapping::{reconstruct_from_minimal_mapping, analyze_minimal_mapping};
 use hex;
 use crate::ipfs_client::pin_file_to_ipfs;
 use std::fs;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use crate::config::get_config;
-use std::collections::HashMap;
 
-/// Reverses ASCII conversion mapping to restore original bytes
-fn reverse_ascii_conversion(ascii_byte: u8) -> u8 {
-    // Reverse the mapping from ascii_converter.rs
-    match ascii_byte {
-        b'0' => 0,    // NULL
-        b'1' => 1,    // SOH
-        b'2' => 2,    // STX
-        b'3' => 3,    // ETX
-        b'4' => 4,    // EOT
-        b'5' => 5,    // ENQ
-        b'6' => 6,    // ACK
-        b'7' => 7,    // BEL
-        b'b' => 8,    // BS (backspace)
-        b' ' => {
-            // Space could be TAB (9), LF (10), or CR (13)
-            // We'll default to LF (10) as it's most common
-            10
-        },
-        b'v' => 11,   // VT (vertical tab)
-        b'f' => 12,   // FF (form feed) - note: conflicts with 15, we'll use 12
-        b'e' => 14,   // SO
-        b'E' => 27,   // ESC
-        b'D' => 127,  // DEL
-        // Characters A-K map to 16-26
-        b'A'..=b'K' => 16 + (ascii_byte - b'A'),
-        // Characters L-O map to 28-31
-        b'L'..=b'O' => 28 + (ascii_byte - b'L'),
-        // Extended ASCII (128-255) mapped to 48-123
-        48..=123 => {
-            if ascii_byte >= 48 && ascii_byte <= 122 {
-                128 + ((ascii_byte - 48) % 75)
-            } else {
-                ascii_byte // Fallback: return as-is
-            }
-        },
-        // Printable ASCII (32-126) should remain unchanged
-        32..=126 => ascii_byte,
-        // Fallback for any unmapped characters
-        _ => ascii_byte,
-    }
-}
+
 
 /// Prints a styled error message
 fn print_error(context: &str, error: &dyn std::fmt::Display) {
@@ -961,7 +920,7 @@ pub async fn generate_ultra_compressed_ascii_combinations_cli() {
 pub async fn generate_10bit_dictionary_cli() {
     use std::collections::HashMap;
     use std::fs;
-    use serde_json::json;
+
     println!("\u{1F522} Generating 10-bit Dictionary (0..1023)");
     let mut dict = HashMap::new();
     for i in 0..1024u16 {
@@ -1014,16 +973,7 @@ pub async fn decompress_file_cli() {
     }
 }
 
-/// Adds this helper:
-fn minimal_to_compression_mapping(min: &crate::mapping::MinimalMapping) -> crate::compression::CompressionMapping {
-    crate::compression::CompressionMapping {
-        chunk_size: min.chunk_size,
-        chunk_to_code: std::collections::HashMap::new(), // Not needed for decompression
-        code_to_chunk: min.code_to_chunk.clone(),
-        padding: 0, // You may want to store this in MinimalMapping if needed
-        original_size: 0, // You may want to store this in MinimalMapping if needed
-    }
-}
+
 
 /// Compresses a file using the bit-packed pipeline
 pub async fn compress_file_cli() {
@@ -1057,7 +1007,17 @@ pub async fn compress_file_cli() {
         print_error("Failed to write compressed file", &e);
         return;
     }
+    // Calculate and print compression ratio
+    let original_size = input_data.len() as f64;
+    let compressed_size = compressed_data.len() as f64;
+    let reduction = if original_size > 0.0 {
+        100.0 - (compressed_size / original_size * 100.0)
+    } else {
+        0.0
+    };
     println!("\u{2705} Compression complete! Compressed: {}", compressed_file);
+    println!("Original size: {:.2} KB, Compressed size: {:.2} KB", original_size / 1024.0, compressed_size / 1024.0);
+    println!("Compression: {:.1}% smaller", reduction);
 }
 
 /// Displays the CLI menu and handles command routing

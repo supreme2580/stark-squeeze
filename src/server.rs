@@ -16,7 +16,6 @@ use anyhow::Result;
 use stark_squeeze::{
     ascii_converter::convert_to_printable_ascii,
     compression::compress_file,
-    mapping::{create_minimal_mapping, save_minimal_mapping},
     starknet_client::upload_data,
 };
 
@@ -223,7 +222,7 @@ async fn process_file_compression(
     let original_size = file_data.len();
     
     // Step 1: Convert to printable ASCII
-    let (ascii_buffer, ascii_stats) = convert_to_printable_ascii(file_data)
+    let (ascii_buffer, _ascii_stats) = convert_to_printable_ascii(file_data)
         .map_err(|e| anyhow::anyhow!("ASCII conversion failed: {}", e))?;
     
     // Step 2: Convert ASCII buffer to binary string
@@ -251,7 +250,7 @@ async fn process_file_compression(
     // Remove the call to create_minimal_mapping and any code that tries to use or save a minimal mapping, since there is no per-file mapping anymore.
     
     // Step 7: Save mapping file
-    let mapping_file_name = format!("{}.map", short_hash);
+    let _mapping_file_name = format!("{}.map", short_hash);
     // save_minimal_mapping(&minimal_mapping, &mapping_file_name)
     //     .map_err(|e| anyhow::anyhow!("Failed to save mapping: {}", e))?;
     
