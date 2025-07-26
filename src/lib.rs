@@ -16,19 +16,4 @@ pub use utils::short_string_to_felt;
 pub use ipfs_client::pin_file_to_ipfs;
 pub use config::{get_config, Config, load_config, save_config};
 
-#[tokio::main]
-#[allow(dead_code)]
-async fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    
-    // Check if --generate flag is provided (JSON format with 90% compression)
-    if args.len() > 1 && args[1] == "--generate" {
-        generate_ultra_compressed_ascii_combinations_cli().await;
-    } else if args.len() > 1 && args[1] == "--compress" {
-        // compress_file_cli().await; // This line is removed as per the edit hint.
-    } else if args.len() > 1 && args[1] == "--decompress" {
-        // decompress_file_cli().await; // This line is removed as per the edit hint.
-    } else {
-        main_menu().await;
-    }
-}
+

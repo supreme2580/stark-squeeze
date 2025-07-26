@@ -2,6 +2,7 @@
 name = "stark_squeeze"
 version = "0.1.0"
 edition = "2021"
+default-run = "stark_squeeze"
 
 [dependencies]
 indicatif = "0.17.11"
@@ -41,7 +42,7 @@ tempfile = "3.8.0"
 
 [[bin]]
 name = "stark_squeeze"
-path = "src/lib.rs"
+path = "src/main.rs"
 
 [[bin]]
 name = "server"
