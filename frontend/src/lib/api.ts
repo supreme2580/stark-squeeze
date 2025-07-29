@@ -164,7 +164,7 @@ export const uploadFile = async (
                 onError?.(error);
                 reject(new ApiError(error, xhr.status, response));
               }
-            } catch (parseError) {
+            } catch {
               const error = 'Failed to parse server response';
               onError?.(error);
               reject(new ApiError(error, xhr.status));
