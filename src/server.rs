@@ -17,6 +17,7 @@ use stark_squeeze::{
     ascii_converter::convert_to_printable_ascii,
     compression::compress_file,
     starknet_client::upload_data,
+    ipfs_client::pin_file_to_ipfs,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,11 +30,14 @@ pub struct CompressionRequest {
 pub struct CompressionResponse {
     pub success: bool,
     pub file_url: Option<String>,
+    pub ipfs_cid: Option<String>,
     pub compression_ratio: Option<f64>,
     pub original_size: Option<usize>,
     pub compressed_size: Option<usize>,
     pub error: Option<String>,
     pub mapping_file: Option<String>,
+    pub upload_timestamp: Option<i64>,
+    pub file_type: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -178,11 +182,14 @@ async fn compress_file_endpoint(
             Json(CompressionResponse {
                 success: false,
                 file_url: None,
+                ipfs_cid: None,
                 compression_ratio: None,
                 original_size: None,
                 compressed_size: None,
                 error: Some("No file data provided".to_string()),
                 mapping_file: None,
+                upload_timestamp: None,
+                file_type: None,
             })
         ));
     }
@@ -203,11 +210,14 @@ async fn compress_file_endpoint(
                 Json(CompressionResponse {
                     success: false,
                     file_url: None,
+                    ipfs_cid: None,
                     compression_ratio: None,
                     original_size: None,
                     compressed_size: None,
                     error: Some(e.to_string()),
                     mapping_file: None,
+                    upload_timestamp: None,
+                    file_type: None,
                 })
             ))
         }
@@ -220,8 +230,16 @@ async fn process_file_compression(
     file_data: &[u8],
 ) -> Result<CompressionResponse> {
     let original_size = file_data.len();
+    let upload_timestamp = chrono::Utc::now().timestamp();
     
-    // Step 1: Convert to printable ASCII
+    // Get file extension for type detection
+    let file_type = std::path::Path::new(file_name)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+    
+    // Step 1: Convert to printable ASCII (keeping this for now)
     let (ascii_buffer, _ascii_stats) = convert_to_printable_ascii(file_data)
         .map_err(|e| anyhow::anyhow!("ASCII conversion failed: {}", e))?;
     
@@ -230,12 +248,12 @@ async fn process_file_compression(
         .map(|&byte| format!("{:08b}", byte))
         .collect();
     
-    // Step 3: Compress the data
+    // Step 3: Mock compression (keeping original data)
     let bytes = binary_string.as_bytes();
     let encoded_data = compress_file(bytes)
         .map_err(|e| anyhow::anyhow!("Compression failed: {}", e))?;
     
-    // Step 4: Calculate compression metrics
+    // Step 4: Calculate compression metrics (mock - no actual compression)
     let compressed_size = encoded_data.len();
     let compression_ratio = ((compressed_size as f64 / original_size as f64) * 100.0) as f64;
     
@@ -246,16 +264,28 @@ async fn process_file_compression(
     let hash = hasher.finalize();
     let short_hash = hex::encode(&hash[..8]);
     
-    // Step 6: Create minimal mapping for file reconstruction
-    // Remove the call to create_minimal_mapping and any code that tries to use or save a minimal mapping, since there is no per-file mapping anymore.
+    // Step 6: Upload original file to IPFS via Pinata
+    let ipfs_cid = match pin_file_to_ipfs(file_data, file_name).await {
+        Ok(cid) => {
+            info!("✅ File pinned to IPFS: {}", cid);
+            Some(cid)
+        }
+        Err(e) => {
+            warn!("⚠️ IPFS upload failed: {}", e);
+            None
+        }
+    };
     
-    // Step 7: Save mapping file
-    let _mapping_file_name = format!("{}.map", short_hash);
-    // save_minimal_mapping(&minimal_mapping, &mapping_file_name)
-    //     .map_err(|e| anyhow::anyhow!("Failed to save mapping: {}", e))?;
+    // Step 7: Generate file URLs
+    let file_url = if let Some(ref cid) = ipfs_cid {
+        Some(format!("https://gateway.pinata.cloud/ipfs/{}", cid))
+    } else {
+        // Fallback to local URL if IPFS upload failed
+        Some(format!("http://localhost:8080/files/{}", short_hash))
+    };
     
     // Step 8: Upload to Starknet (optional - you can disable this for testing)
-    let file_url = if std::env::var("ENABLE_STARKNET_UPLOAD").unwrap_or_default() == "true" {
+    let _starknet_url = if std::env::var("ENABLE_STARKNET_UPLOAD").unwrap_or_default() == "true" {
         match upload_to_starknet(&short_hash, file_name, original_size, compressed_size).await {
             Ok(url) => Some(url),
             Err(e) => {
@@ -264,20 +294,23 @@ async fn process_file_compression(
             }
         }
     } else {
-        Some(format!("http://localhost:3000/files/{}", short_hash))
+        None
     };
     
-    info!("✅ File compressed successfully: {} -> {} bytes ({:.1}% compression)", 
+    info!("✅ File processed successfully: {} -> {} bytes ({:.1}% compression)", 
           original_size, compressed_size, 100.0 - compression_ratio);
     
     Ok(CompressionResponse {
         success: true,
         file_url,
+        ipfs_cid,
         compression_ratio: Some(100.0 - compression_ratio),
         original_size: Some(original_size),
         compressed_size: Some(compressed_size),
         error: None,
         mapping_file: None,
+        upload_timestamp: Some(upload_timestamp),
+        file_type: Some(file_type),
     })
 }
 
@@ -355,6 +388,9 @@ fn create_router(state: SharedState) -> Router {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load environment variables
+    dotenvy::dotenv().ok();
+    
     // Initialize tracing
     tracing_subscriber::fmt::init();
     
@@ -366,12 +402,16 @@ async fn main() -> Result<()> {
     // Create router
     let app = create_router(state);
     
+    // Get port from environment variable (Render provides PORT, but we use SERVER_PORT)
+    let port = std::env::var("PORT").or_else(|_| std::env::var("SERVER_PORT")).unwrap_or_else(|_| "8080".to_string());
+    let addr = format!("0.0.0.0:{}", port);
+    
     // Start server
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
-    info!("🌐 Server listening on http://0.0.0.0:8080");
-    info!("📚 Health check: http://0.0.0.0:8080/health");
-    info!("📊 Status: http://0.0.0.0:8080/status");
-    info!("📁 Compress files: POST http://0.0.0.0:8080/compress");
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    info!("🌐 Server listening on http://{}", addr);
+    info!("📚 Health check: http://{}/health", addr);
+    info!("📊 Status: http://{}/status", addr);
+    info!("📁 Compress files: POST http://{}/compress", addr);
     
     axum::serve(listener, app).await?;
     
