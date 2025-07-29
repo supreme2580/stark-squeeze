@@ -1,10 +1,11 @@
 use axum::{
     extract::{Multipart, State},
-    http::{StatusCode, HeaderMap},
+    http::{StatusCode, HeaderMap, Method},
     response::{Json, IntoResponse},
     routing::{post, get},
     Router,
 };
+use tower_http::cors::{CorsLayer, Any};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -378,11 +379,19 @@ async fn download_file(axum::extract::Path(file_id): axum::extract::Path<String>
 
 /// Create the router with all endpoints
 fn create_router(state: SharedState) -> Router {
+    // Configure CORS
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_headers(Any)
+        .allow_credentials(false);
+
     Router::new()
         .route("/health", get(health_check))
         .route("/status", get(server_status))
         .route("/compress", post(compress_file_endpoint))
         .route("/files/:file_id", get(download_file))
+        .layer(cors)
         .with_state(state)
 }
 
