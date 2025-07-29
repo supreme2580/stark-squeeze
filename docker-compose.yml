@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  # Backend service
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=postgresql://starksqueeze:password@postgres:5432/starksqueeze
+      - IPFS_API_URL=http://ipfs:5001/api/v0
+      - STARKNET_RPC_URL=https://alpha-mainnet.starknet.io
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ipfs:
+        condition: service_started
+    volumes:
+      - backend_data:/app/data
+      - backend_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - starksqueeze-network
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: starksqueeze
+      POSTGRES_USER: starksqueeze
+      POSTGRES_PASSWORD: password
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U starksqueeze -d starksqueeze"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - starksqueeze-network
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --requirepass redis_password
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - starksqueeze-network
+
+  # IPFS node
+  ipfs:
+    image: ipfs/kubo:latest
+    ports:
+      - "4001:4001"   # P2P port
+      - "5001:5001"   # API port
+      - "8080:8080"   # Gateway port
+    volumes:
+      - ipfs_data:/data/ipfs
+    environment:
+      - IPFS_PROFILE=server
+    command: sh -c "ipfs config --json API.HTTPHeaders.Access-Control-Allow-Origin '[\"*\"]' && ipfs config --json API.HTTPHeaders.Access-Control-Allow-Methods '[\"PUT\", \"POST\", \"GET\"]' && ipfs config --json API.HTTPHeaders.Access-Control-Allow-Headers '[\"Authorization\"]' && ipfs daemon --migrate=true"
+    healthcheck:
+      test: ["CMD", "ipfs", "dag", "stat", "/ipfs/QmUNLLsPACCz1vLxQVkXqqLX5R1X345qqfHbsf67hvA3Nn"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - starksqueeze-network
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - starksqueeze-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  ipfs_data:
+    driver: local
+  backend_data:
+    driver: local
+  backend_logs:
+    driver: local
+
+networks:
+  starksqueeze-network:
+    driver: bridge 

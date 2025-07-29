@@ -367,11 +367,11 @@ async fn main() -> Result<()> {
     let app = create_router(state);
     
     // Start server
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
-    info!("🌐 Server listening on http://0.0.0.0:3000");
-    info!("📚 Health check: http://0.0.0.0:3000/health");
-    info!("📊 Status: http://0.0.0.0:3000/status");
-    info!("📁 Compress files: POST http://0.0.0.0:3000/compress");
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
+    info!("🌐 Server listening on http://0.0.0.0:8080");
+    info!("📚 Health check: http://0.0.0.0:8080/health");
+    info!("📊 Status: http://0.0.0.0:8080/status");
+    info!("📁 Compress files: POST http://0.0.0.0:8080/compress");
     
     axum::serve(listener, app).await?;
     
