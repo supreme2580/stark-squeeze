@@ -1,20 +1,35 @@
-import { useState } from 'react';
-import { Upload, FileText, CheckCircle, Zap } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Upload, FileText, CheckCircle, Zap, AlertCircle, X, RotateCcw, Wifi, WifiOff } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import WalletConnect from '@/components/WalletConnect';
 import { useWallet } from '@/contexts/WalletContext';
+import { useUpload } from '@/hooks/useUpload';
+import { useToast } from '@/hooks/use-toast';
+import { validateFile, checkServerStatus, healthCheck } from '@/lib/api';
 
 const Index = () => {
   const { isConnected } = useWallet();
+  const { toast } = useToast();
   const [dragActive, setDragActive] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadComplete, setUploadComplete] = useState(false);
-  const [txHash] = useState('0x1234...abcd'); // Placeholder for now
-  const [status, setStatus] = useState('Ready');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [serverStatus, setServerStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking');
+  
+  const {
+    isUploading,
+    progress,
+    status,
+    error,
+    uploadComplete,
+    uploadResponse,
+    canCancel,
+    startUpload,
+    cancelUpload,
+    resetUpload,
+    retryUpload,
+  } = useUpload();
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -33,61 +48,107 @@ const Index = () => {
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.type === 'application/pdf' || file.name.endsWith('.doc') || file.name.endsWith('.docx')) {
-        setUploadedFile(file);
-        simulateUpload();
-      }
+      handleFileSelection(file);
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (file.type === 'application/pdf' || file.name.endsWith('.doc') || file.name.endsWith('.docx')) {
-        setUploadedFile(file);
-        simulateUpload();
-      }
+      handleFileSelection(file);
     }
   };
 
-  const simulateUpload = () => {
-    setIsUploading(true);
-    setUploadComplete(false);
-    setStatus('Initializing compression...');
-    setUploadProgress(0);
-
-    const statuses = [
-      'Analyzing file structure...',
-      'Applying Stark compression...',
-      'Optimizing data blocks...',
-      'Finalizing compression...',
-      'Verification complete!'
-    ];
-
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        const newProgress = prev + 20;
-        if (newProgress >= 100) {
-          clearInterval(interval);
-          setIsUploading(false);
-          setUploadComplete(true);
-          setStatus('Compression successful!');
-          return 100;
-        }
-        const statusIndex = Math.floor(newProgress / 20) - 1;
-        setStatus(statuses[statusIndex] || `Processing: ${newProgress}%`);
-        return newProgress;
+  const handleFileSelection = (file: File) => {
+    // Clear previous errors
+    setValidationError(null);
+    
+    // Validate file
+    const validation = validateFile(file);
+    if (!validation.valid) {
+      setValidationError(validation.error!);
+      toast({
+        title: "File Validation Failed",
+        description: validation.error!,
+        variant: "destructive",
       });
-    }, 800);
+      return;
+    }
+
+    setSelectedFile(file);
+    
+    // Show success toast
+    toast({
+      title: "File Selected",
+      description: `${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`,
+      variant: "success",
+    });
   };
 
-  const resetUpload = () => {
-    setUploadedFile(null);
-    setUploadProgress(0);
-    setIsUploading(false);
-    setUploadComplete(false);
-    setStatus('Ready');
+  const handleStartUpload = async () => {
+    if (!selectedFile) return;
+
+    try {
+      await startUpload(selectedFile);
+    } catch (error) {
+      console.error('Upload failed:', error);
+    }
   };
+
+  // Check server status on component mount
+  useEffect(() => {
+    const checkServer = async () => {
+      try {
+        setServerStatus('checking');
+        const isHealthy = await healthCheck();
+        if (isHealthy) {
+          setServerStatus('connected');
+          toast({
+            title: "Server Connected",
+            description: "Successfully connected to compression server",
+            variant: "success",
+          });
+        } else {
+          setServerStatus('disconnected');
+          toast({
+            title: "Server Disconnected",
+            description: "Unable to connect to compression server",
+            variant: "destructive",
+          });
+        }
+      } catch (error) {
+        setServerStatus('disconnected');
+        toast({
+          title: "Server Error",
+          description: "Failed to connect to compression server",
+          variant: "destructive",
+        });
+      }
+    };
+
+    checkServer();
+  }, [toast]);
+
+  // Show toast notifications for upload state changes
+  useEffect(() => {
+    if (uploadComplete && uploadResponse) {
+      toast({
+        title: "Upload Successful!",
+        description: `File compressed successfully. Compression ratio: ${uploadResponse.compression_ratio?.toFixed(1)}%`,
+        variant: "success",
+      });
+    }
+  }, [uploadComplete, uploadResponse, toast]);
+
+  useEffect(() => {
+    if (error) {
+      toast({
+        title: "Upload Failed",
+        description: error,
+        variant: "destructive",
+      });
+    }
+  }, [error, toast]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex flex-col items-center justify-center p-4">
@@ -131,6 +192,28 @@ const Index = () => {
         </div>
 
         <div className="text-center mb-6">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
+              serverStatus === 'connected' 
+                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                : serverStatus === 'disconnected'
+                ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+            }`}>
+              {serverStatus === 'connected' ? (
+                <Wifi className="w-4 h-4" />
+              ) : serverStatus === 'disconnected' ? (
+                <WifiOff className="w-4 h-4" />
+              ) : (
+                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              )}
+              <span className="font-medium">
+                {serverStatus === 'connected' ? 'Server Connected' : 
+                 serverStatus === 'disconnected' ? 'Server Disconnected' : 'Checking Connection'}
+              </span>
+            </div>
+          </div>
+          
           <h3 className="text-2xl font-bold text-white mb-2">Upload Your File</h3>
           <p className="text-slate-300">
             {isConnected 
@@ -163,7 +246,7 @@ const Index = () => {
             />
 
             <div className="space-y-4">
-              {!uploadedFile ? (
+              {!selectedFile ? (
                 <>
                   <div className="mx-auto w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center">
                     <Upload className="w-8 h-8 text-blue-400" />
@@ -196,12 +279,12 @@ const Index = () => {
                     <h3 className="text-xl font-semibold text-white mb-2">
                       {uploadComplete ? 'Success!' : isUploading ? 'Uploading...' : 'File Selected'}
                     </h3>
-                    <p className="text-slate-300">{uploadedFile.name}</p>
+                    <p className="text-slate-300">{selectedFile.name}</p>
                   </div>
                   {isUploading && (
                     <div className="w-full max-w-xs mx-auto">
-                      <Progress value={uploadProgress} className="h-2" />
-                      <p className="text-sm text-slate-400 mt-2">{uploadProgress}%</p>
+                      <Progress value={progress} className="h-2" />
+                      <p className="text-sm text-slate-400 mt-2">{progress}%</p>
                     </div>
                   )}
                 </div>
@@ -210,7 +293,7 @@ const Index = () => {
           </div>
 
           <div className="mt-8 space-y-6">
-            {uploadedFile && (
+            {selectedFile && (
               <div className="bg-slate-750 rounded-xl p-6 border border-slate-600">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-lg font-semibold text-white">Compression Status</h4>
@@ -225,12 +308,12 @@ const Index = () => {
                 <div className="space-y-3">
                   <div className="flex justify-between text-sm">
                     <span className="text-slate-300">Progress</span>
-                    <span className="text-white font-mono">{uploadProgress}%</span>
+                    <span className="text-white font-mono">{progress}%</span>
                   </div>
                   
                   <div className="relative">
                     <Progress 
-                      value={uploadProgress} 
+                      value={progress} 
                       className="h-3 bg-slate-700"
                     />
                     {uploadComplete && (
@@ -264,7 +347,9 @@ const Index = () => {
                 </label>
                 <div className="bg-slate-700/50 rounded-lg p-3">
                   <p className="text-white font-mono text-sm">Transaction Hash</p>
-                  <p className="text-slate-300 text-sm">{uploadedFile ? txHash : '—'}</p>
+                  <p className="text-slate-300 text-sm">
+                    {uploadResponse?.ipfs_cid ? `IPFS: ${uploadResponse.ipfs_cid.slice(0, 10)}...` : '—'}
+                  </p>
                 </div>
               </div>
 
@@ -278,12 +363,35 @@ const Index = () => {
                 <div className="bg-slate-700/50 rounded-lg p-3">
                   <p className="text-white font-mono text-sm">File Size</p>
                   <p className="text-slate-300 text-sm">
-                    {uploadedFile ? `${(uploadedFile.size / 1024 / 1024).toFixed(2)} MB` : '—'}
+                    {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : '—'}
                   </p>
                 </div>
               </div>
             </div>
 
+            {/* Error Display */}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-red-400 mb-2">
+                  <AlertCircle className="w-5 h-5" />
+                  <span className="font-medium">Upload Error</span>
+                </div>
+                <p className="text-red-300 text-sm">{error}</p>
+                <div className="flex gap-2 mt-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={retryUpload}
+                    className="bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30"
+                  >
+                    <RotateCcw className="w-4 h-4 mr-2" />
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
             <div className="flex justify-end gap-3 pt-4">
               <Button 
                 variant="outline" 
@@ -292,9 +400,22 @@ const Index = () => {
               >
                 Reset
               </Button>
+              
+              {isUploading && canCancel && (
+                <Button
+                  variant="outline"
+                  onClick={cancelUpload}
+                  className="bg-red-500/20 border-red-500/30 text-red-300 hover:bg-red-500/30"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  Cancel
+                </Button>
+              )}
+              
               <Button 
                 className="bg-blue-600 hover:bg-blue-700 text-white"
-                disabled={!uploadedFile || isUploading || !isConnected}
+                disabled={!selectedFile || isUploading || !isConnected || serverStatus !== 'connected'}
+                onClick={handleStartUpload}
               >
                 {uploadComplete ? 'Download Compressed File' : 'Start Compression'}
               </Button>
