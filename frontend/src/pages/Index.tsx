@@ -3,8 +3,11 @@ import { Upload, FileText, CheckCircle, Zap } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import WalletConnect from '@/components/WalletConnect';
+import { useWallet } from '@/contexts/WalletContext';
 
 const Index = () => {
+  const { isConnected } = useWallet();
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -98,6 +101,11 @@ const Index = () => {
             <h1 className="text-5xl font-bold text-white">Stark Squeeze</h1>
           </div>
           
+          {/* Wallet Connection Section */}
+          <div className="mb-8">
+            <WalletConnect />
+          </div>
+          
           {/* Introduction Section */}
           <div className="max-w-2xl mx-auto mb-8">
             <h2 className="text-2xl font-semibold text-blue-300 mb-4">Advanced File Compression System</h2>
@@ -124,7 +132,12 @@ const Index = () => {
 
         <div className="text-center mb-6">
           <h3 className="text-2xl font-bold text-white mb-2">Upload Your File</h3>
-          <p className="text-slate-300">Drag and drop your file to begin compression. Supports .pdf, .doc, and .docx formats.</p>
+          <p className="text-slate-300">
+            {isConnected 
+              ? "Drag and drop your file to begin compression. Supports .pdf, .doc, and .docx formats."
+              : "Please connect your wallet to upload and compress files."
+            }
+          </p>
         </div>
 
         <Card className="bg-slate-800/80 backdrop-blur-sm border-slate-700 p-8">
@@ -135,18 +148,18 @@ const Index = () => {
                 : uploadComplete
                 ? 'border-green-400 bg-green-400/10'
                 : 'border-slate-600 hover:border-slate-500'
-            }`}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
+            } ${!isConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
+            onDragEnter={isConnected ? handleDrag : undefined}
+            onDragLeave={isConnected ? handleDrag : undefined}
+            onDragOver={isConnected ? handleDrag : undefined}
+            onDrop={isConnected ? handleDrop : undefined}
           >
             <input
               type="file"
               accept=".pdf,.doc,.docx"
               onChange={handleFileSelect}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              disabled={isUploading}
+              disabled={isUploading || !isConnected}
             />
 
             <div className="space-y-4">
@@ -156,9 +169,18 @@ const Index = () => {
                     <Upload className="w-8 h-8 text-blue-400" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-semibold text-white mb-2">Drag & Drop</h3>
-                    <p className="text-slate-300 mb-2">or <span className="text-blue-400 underline cursor-pointer">choose a file</span></p>
-                    <p className="text-sm text-slate-400">Maximum file size 500MB • See more requirements</p>
+                    <h3 className="text-xl font-semibold text-white mb-2">
+                      {isConnected ? 'Drag & Drop' : 'Connect Wallet First'}
+                    </h3>
+                    <p className="text-slate-300 mb-2">
+                      {isConnected 
+                        ? <>or <span className="text-blue-400 underline cursor-pointer">choose a file</span></>
+                        : 'Connect your wallet to start compressing files'
+                      }
+                    </p>
+                    <p className="text-sm text-slate-400">
+                      {isConnected ? 'Maximum file size 500MB • See more requirements' : 'Wallet connection required'}
+                    </p>
                   </div>
                 </>
               ) : (
@@ -272,7 +294,7 @@ const Index = () => {
               </Button>
               <Button 
                 className="bg-blue-600 hover:bg-blue-700 text-white"
-                disabled={!uploadedFile || isUploading}
+                disabled={!uploadedFile || isUploading || !isConnected}
               >
                 {uploadComplete ? 'Download Compressed File' : 'Start Compression'}
               </Button>

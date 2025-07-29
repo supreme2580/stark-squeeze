@@ -1,5 +1,5 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "starksqueeze",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -39,7 +39,10 @@
     "@radix-ui/react-toggle": "^1.1.0",
     "@radix-ui/react-toggle-group": "^1.1.0",
     "@radix-ui/react-tooltip": "^1.1.4",
+    "@starknet-react/chains": "^4.0.2",
+    "@starknet-react/core": "^4.0.2",
     "@tanstack/react-query": "^5.56.2",
+    "caniuse-lite": "^1.0.30001727",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
