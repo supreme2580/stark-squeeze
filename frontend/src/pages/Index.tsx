@@ -281,12 +281,6 @@ const Index = () => {
                     </h3>
                     <p className="text-slate-300">{selectedFile.name}</p>
                   </div>
-                  {isUploading && (
-                    <div className="w-full max-w-xs mx-auto">
-                      <Progress value={progress} className="h-2" />
-                      <p className="text-sm text-slate-400 mt-2">{progress}%</p>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
