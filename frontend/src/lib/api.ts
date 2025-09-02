@@ -49,7 +49,8 @@ class ApiError extends Error {
 // File validation
 export const validateFile = (file: File): { valid: boolean; error?: string } => {
   // Check file size (500MB limit)
-  const maxSize = 500 * 1024 * 1024; // 500MB
+  const maxSize = 1024 * 1024 * 1024; // 500MB
+ 
   if (file.size > maxSize) {
     return {
       valid: false,
@@ -58,28 +59,45 @@ export const validateFile = (file: File): { valid: boolean; error?: string } => 
   }
 
   // Check file type
-  const allowedTypes = [
-    'application/pdf',
-    'application/msword',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'text/plain',
-    'application/json',
-    'text/csv',
-    'application/xml',
-    'text/xml'
-  ];
+  const allowedFileTypes = {
+    'application/pdf':['.pdf'],
+    'application/msword':['doc'],
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document':['.docx'],
+    'text/plain':['.txt'],
+    'application/json':['.json'],
+    'text/csv':['.csv'],
+    'application/xml':['.xml'],
+    'text/xml':['.xml'],
+    // Images
+    'image/jpeg': ['.jpg', '.jpeg'],
+    'image/png': ['.png'],
+    'image/gif': ['.gif'],
+    'image/svg+xml': ['.svg'],
+    'image/webp': ['.webp'],
+    // Audio
+    'audio/mpeg': ['.mp3'],
+    'audio/wav': ['.wav'],
+    'audio/aac': ['.aac'],
+    // Video
+    'video/mp4': ['.mp4'],
+    'video/quicktime': ['.mov'],
+    'video/x-msvideo': ['.avi'],
+    // Archives
+    'application/zip': ['.zip'],
+    'application/x-rar-compressed': ['.rar']
+};
 
   const allowedExtensions = ['.pdf', '.doc', '.docx', '.txt', '.json', '.csv', '.xml'];
 
-  const hasValidType = allowedTypes.includes(file.type);
-  const hasValidExtension = allowedExtensions.some(ext => 
+  const hasValidType = Object.keys(allowedFileTypes).includes(file.type);
+  const hasValidExtension = Object.keys(allowedFileTypes).flat().some(ext => 
     file.name.toLowerCase().endsWith(ext)
   );
 
   if (!hasValidType && !hasValidExtension) {
     return {
       valid: false,
-      error: `Unsupported file type. Allowed types: ${allowedExtensions.join(', ')}`
+      error: `Unsupported file type. Allowed types: ${[...new Set(allowedExtensions)].join(', ')}`
     };
   }
 
