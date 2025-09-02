@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Upload, FileText, CheckCircle, Zap, AlertCircle, X, RotateCcw, Wifi, WifiOff } from 'lucide-react';
+import { Upload, FileText, CheckCircle, Zap, AlertCircle, X, RotateCcw, Wifi, WifiOff, FileImage, FileAudio, FileVideo, FileArchive} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -9,6 +9,24 @@ import { useUpload } from '@/hooks/useUpload';
 import { useToast } from '@/hooks/use-toast';
 import { validateFile, checkServerStatus, healthCheck } from '@/lib/api';
 
+const getFileIcon=(file:File)=>{
+  const fileType=file.type;
+  if(fileType.startsWith('image/')){
+    return <FileImage className="w-8 h-8 text-blue-400" />;
+  }
+  if(fileType.startsWith('audio/')){
+    return <FileVideo className="w-8 h-8 text-purple-400" />;
+  }
+  if(fileType.startsWith('video/')){
+    return <FileVideo className="w-8 h-8 text-red-400" />;
+  }
+  if(fileType.includes('zip') || file.name.endsWith('.rar')){
+    return <FileArchive className="w-8 h-8 text-yellow-400" />;
+  }
+  
+    return <FileText className="w-8 h-8 text-purple-400" />;
+  
+}
 const Index = () => {
   const { isConnected } = useWallet();
   const { toast } = useToast();
@@ -94,7 +112,11 @@ const Index = () => {
       console.error('Upload failed:', error);
     }
   };
-
+  const handleDownload = () => {
+    if (uploadResponse?.file_url) {
+      window.open(uploadResponse.file_url, '_blank');
+    }
+  };
   // Check server status on component mount
   useEffect(() => {
     const checkServer = async () => {
@@ -149,7 +171,7 @@ const Index = () => {
       });
     }
   }, [error, toast]);
-
+  const fileInputAccept = "image/*,audio/*,video/*,.pdf,.doc,.docx,.txt,.json,.csv,.xml,.zip,.rar";
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-4xl mx-auto">
@@ -415,7 +437,7 @@ const Index = () => {
               <Button 
                 className="bg-blue-600 hover:bg-blue-700 text-white"
                 disabled={!selectedFile || isUploading || !isConnected || serverStatus !== 'connected'}
-                onClick={handleStartUpload}
+                onClick={uploadComplete?handleDownload:handleStartUpload}
               >
                 {uploadComplete ? 'Download Compressed File' : 'Start Compression'}
               </Button>
