@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { WalletProvider } from "./contexts/WalletContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
-import { AuthRedirect } from "./pages/Auth"; // <-- Updated import
+import AuthRedirect from "./pages/auth"; // <-- Updated import
 
 const queryClient = new QueryClient();
 
